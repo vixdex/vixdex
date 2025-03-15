@@ -11,17 +11,33 @@ import {StateLibrary} from "v4-core/src/libraries/StateLibrary.sol";
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {Volatility} from "./lib/Volatility.sol";
 import {VolatileERC20} from "./VolatileERC20.sol";
+import {BondingCurve} from "./lib/BondingCurve.sol";
+import {BeforeSwapDelta, toBeforeSwapDelta, BeforeSwapDeltaLibrary} from "v4-core/src/types/BeforeSwapDelta.sol";
 import "forge-std/console.sol";  // Foundry's console library
 contract Vix is BaseHook{
     using CurrencyLibrary for Currency;
     using StateLibrary for IPoolManager;
     using Volatility for int;
+    using BondingCurve for uint;
+
+    error invalidLiquidityAction();
     mapping(address=>mapping(address=>bool)) public isPairInitiated;
     mapping(address=>mapping(address=>uint)) public pairInitiatedTime;
     mapping(address=>mapping(address=>uint)) public pairEndingTime;
+    uint constant public SLOPE = 300; //0.03% || 0.0003
+    uint constant public FEE = 10000; //1% || 0.01
+    uint constant public BASE_PRICE = 0.0000060 * 1e18;
     struct VixTokenData {
-        address VIXHIGHTOKEN;
-        address VIXLOWTOKEN;
+        address vixHighToken;
+        address vixLowToken;
+        uint price0;
+        uint price1;
+        uint circulation0;
+        uint circulation1;
+        uint contractHoldings0;
+        uint contractHoldings1;
+        uint reserve0;
+        uint reserve1;
     }
 
     mapping(address=>mapping(address=>VixTokenData)) vixTokens;
@@ -41,30 +57,43 @@ contract Vix is BaseHook{
                 beforeRemoveLiquidity: false,
                 afterAddLiquidity: true,
                 afterRemoveLiquidity: false,
-                beforeSwap: false,
-                afterSwap: true,
+                beforeSwap: true,
+                afterSwap: false,
                 beforeDonate: false,
                 afterDonate: false,
-                beforeSwapReturnDelta: false,
+                beforeSwapReturnDelta: true,
                 afterSwapReturnDelta: false,
                 afterAddLiquidityReturnDelta: false,
                 afterRemoveLiquidityReturnDelta: false
             });
     }
 
-     function _beforeAddLiquidity(address, PoolKey calldata key, IPoolManager.ModifyLiquidityParams calldata , bytes calldata)internal view override  returns (bytes4){
-         
-            return this.beforeAddLiquidity.selector;
+     function _beforeAddLiquidity(address, PoolKey calldata, IPoolManager.ModifyLiquidityParams calldata , bytes calldata)internal view override  returns (bytes4){
+         revert invalidLiquidityAction();
      }
 
-    function _afterAddLiquidity(address,PoolKey calldata key,IPoolManager.ModifyLiquidityParams calldata,BalanceDelta delta,BalanceDelta,bytes calldata) internal override returns (bytes4, BalanceDelta){
-                      return (this.afterAddLiquidity.selector, delta);
+    
+     function _beforeRemoveLiquidity(address, PoolKey calldata, IPoolManager.ModifyLiquidityParams calldata , bytes calldata)internal view override  returns (bytes4){
+         revert invalidLiquidityAction();
+     }
 
-    }
+    
+    function _beforeSwap(address, PoolKey calldata key, IPoolManager.SwapParams calldata params, bytes calldata data) internal view override returns (bytes4, BeforeSwapDelta, uint24) {
+        uint256 amountInOutPositive = params.amountSpecified > 0? uint256(params.amountSpecified): uint256(-params.amountSpecified);
+        if(params.zeroForOne){
+            if(params.amountSpecified  < 0){
+                address _currency0 = Currency.unwrap(key.currency0);
+                address _currency1 = Currency.unwrap(key.currency1);
+                uint circulation = vixTokens[_currency0][_currency1].circulation0;
+                uint tokenForGivenCost = circulation.tokensForGivenCost(amountInOutPositive,SLOPE,FEE,BASE_PRICE);
+                console.log("tokenForGivenCost: ",tokenForGivenCost);
+            }
 
-    function _afterSwap(address, PoolKey calldata key, IPoolManager.SwapParams calldata, BalanceDelta, bytes calldata) internal override returns (bytes4, int128){
+        }else{
 
-        return (this.afterSwap.selector, 0);
+        }
+        //BeforeSwapDelta beforeSwapDelta = toBeforeSwapDelta(-1,1); // (specified , unspecified) )
+        return (this.beforeSwap.selector,BeforeSwapDeltaLibrary.ZERO_DELTA , 0);
     }
 
 
@@ -85,7 +114,7 @@ contract Vix is BaseHook{
             vixTokenAddresses[i] = address(v_token);
             mintVixToken(address(this),address(v_token),250 * 1000000 * (10**18));
         }
-        vixTokens[_currency0][_currency1] = VixTokenData(vixTokenAddresses[0],vixTokenAddresses[1]);
+        vixTokens[_currency0][_currency1] = VixTokenData(vixTokenAddresses[0],vixTokenAddresses[1],BASE_PRICE,BASE_PRICE,0,0,0,0,0,0);
         return (vixTokenAddresses);
     }
 
@@ -112,8 +141,8 @@ function isPairedWithBaseToken(address _currency0, address _currency1) public vi
         require(isPairInitiated[_currency0][_currency1] == true,"Pair not initiated");
         if(pairEndingTime[_currency0][_currency1] < block.timestamp){
 
-            address VHT = vixTokens[_currency0][_currency1].VIXHIGHTOKEN;
-            address VLT = vixTokens[_currency0][_currency1].VIXLOWTOKEN;
+            address VHT = vixTokens[_currency0][_currency1].vixHighToken;
+            address VLT = vixTokens[_currency0][_currency1].vixLowToken;
             VolatileERC20 VHTContract = VolatileERC20(VHT);
             VolatileERC20 VLTContract = VolatileERC20(VLT);
 
@@ -122,7 +151,6 @@ function isPairedWithBaseToken(address _currency0, address _currency1) public vi
             return vixAdd;
         }else{
             revert("Pair not expired");
-            return [address(0),address(0)];
         }
     }
 

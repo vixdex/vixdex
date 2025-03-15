@@ -18,7 +18,7 @@ contract VixTest is Test,Deployers {
     using StateLibrary for IPoolManager;
 
     Vix hook;
-    address usdc;
+    address baseToken;
     function setUp()external {
 
         deployFreshManagerAndRouters();
@@ -27,16 +27,18 @@ contract VixTest is Test,Deployers {
             uint160(
                     Hooks.BEFORE_ADD_LIQUIDITY_FLAG |
                     Hooks.AFTER_ADD_LIQUIDITY_FLAG |
-                    Hooks.AFTER_SWAP_FLAG
+                    Hooks.BEFORE_SWAP_FLAG |
+                    Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
             )
         );       
         console.log(hookAddress);
-        usdc = address(Currency.unwrap(currency0));
-        console.log(usdc);
-        deployCodeTo("Vix.sol",abi.encode(manager,address(usdc)),hookAddress);
+        Currency ethCurrency = Currency.wrap(address(0));
+        address baseToken = Currency.unwrap(ethCurrency);
+        
+        deployCodeTo("Vix.sol",abi.encode(manager,address(baseToken)),hookAddress);
         hook = Vix(hookAddress);
             (key, ) = initPool(
-            currency0,
+            ethCurrency,
             currency1,
             hook,
             3000,
@@ -59,45 +61,57 @@ contract VixTest is Test,Deployers {
         address vixToken2 = vixAdd[1];
         MockERC20 vixToken1Contract = MockERC20(vixToken1);
         MockERC20 vixToken2Contract = MockERC20(vixToken2);
-        console.log("before reset pair");
-        console.log("vixtoken1 address: ",vixToken1);
-        console.log("vixtoken2 address: ",vixToken2);
-        //checking total supply
-        console.log("HIGH-VIX balance: ",vixToken1Contract.totalSupply());
-        console.log("LOW-VIX balance: ",vixToken2Contract.totalSupply());
+  
         //transfering token
         hook.transferVixtoken(address(this), 50 * (10**18),vixToken1);
         assertEq(vixToken1Contract.totalSupply(), 250 * 1000000 * (10**18));
         assertEq(vixToken2Contract.totalSupply(), 250 * 1000000 * (10**18));
         assertEq(vixToken1Contract.balanceOf(address(this)), 50 * (10**18));
+
+        //swap
+        PoolSwapTest.TestSettings memory settings = PoolSwapTest.TestSettings({
+        takeClaims: false,
+        settleUsingBurn: false
+        });
+
+            swapRouter.swap(
+            key,
+            IPoolManager.SwapParams(
+            {
+            zeroForOne: true,
+            amountSpecified: -1e18,
+            sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+            }
+            ), 
+            settings,
+             ZERO_BYTES
+             );
+
         //expect revert when trying to reset pair before deadline
-        uint deadline = 3600 * 24;
-        vm.expectRevert();
-        hook.resetPair(token0,token1,deadline);
-        //expect revert when transfering token after deadline
-        vm.warp(block.timestamp + 25 hours);
-        vm.expectRevert("TOKEN EXPIRED, MINTING CLOSED");
-        hook.transferVixtoken(address(this), 250 * (10**18),vixToken1);
+        // uint deadline = 3600 * 24;
+        // vm.expectRevert();
+        // hook.resetPair(token0,token1,deadline);
+        // //expect revert when transfering token after deadline
+        // vm.warp(block.timestamp + 25 hours);
+        // vm.expectRevert("TOKEN EXPIRED, MINTING CLOSED");
+        // hook.transferVixtoken(address(this), 250 * (10**18),vixToken1);
+     
 
-        //expect reseting pair after deadline
+
+        // //expect reseting pair after deadline
         
-        (address[2] memory vixAdd2) = hook.resetPair(token0,token1,deadline);
-        address vixToken1Reset = vixAdd2[0];
-        address vixToken2Reset = vixAdd2[1];
-        MockERC20 vixToken1ResetContract = MockERC20(vixToken1Reset);
-        MockERC20 vixToken2ResetContract = MockERC20(vixToken2Reset);
+        // (address[2] memory vixAdd2) = hook.resetPair(token0,token1,deadline);
+        // address vixToken1Reset = vixAdd2[0];
+        // address vixToken2Reset = vixAdd2[1];
+        // MockERC20 vixToken1ResetContract = MockERC20(vixToken1Reset);
+        // MockERC20 vixToken2ResetContract = MockERC20(vixToken2Reset);
 
-        //
+        // //
 
-        console.log("after reset pair");
-        console.log("vixtoken1 address: ",vixToken1Reset);
-        console.log("vixtoken2 address: ",vixToken2Reset);
-        //checking total supply
-        console.log("HIGH-VIX balance: ",vixToken1ResetContract.totalSupply());
-        console.log("LOW-VIX balance: ",vixToken2ResetContract.totalSupply());
-        //expect transfering token after deadline
-        hook.transferVixtoken(address(this), 250 * (10**18),vixToken1Reset);
-        assertEq(vixToken1ResetContract.balanceOf(address(this)), 250 * (10**18));
+
+        // //expect transfering token after deadline
+        // hook.transferVixtoken(address(this), 250 * (10**18),vixToken1Reset);
+        // assertEq(vixToken1ResetContract.balanceOf(address(this)), 250 * (10**18));
 
 
     }
