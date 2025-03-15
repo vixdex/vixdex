@@ -16,20 +16,20 @@ contract Vix is BaseHook{
     using CurrencyLibrary for Currency;
     using StateLibrary for IPoolManager;
     using Volatility for int;
-    mapping(uint256=>mapping(uint256=>bool)) public isPairInitiated;
-    mapping(uint256=>mapping(uint256=>uint)) public pairInitiatedTime;
-    mapping(uint256=>mapping(uint256=>uint)) public pairEndingTime;
+    mapping(address=>mapping(address=>bool)) public isPairInitiated;
+    mapping(address=>mapping(address=>uint)) public pairInitiatedTime;
+    mapping(address=>mapping(address=>uint)) public pairEndingTime;
     struct VixTokenData {
         address VIXHIGHTOKEN;
         address VIXLOWTOKEN;
     }
 
-    mapping(uint256=>mapping(uint256=>VixTokenData)) vixTokens;
-    address public USDC;
+    mapping(address=>mapping(address=>VixTokenData)) vixTokens;
+    address public baseToken;
 
     //initiating BaseHook with IPoolManager
-    constructor(IPoolManager _poolManager,address _usdc) BaseHook(_poolManager) {
-        USDC = _usdc;
+    constructor(IPoolManager _poolManager,address _baseToken) BaseHook(_poolManager) {
+        baseToken = _baseToken;
     }
 
     //getting Hook permission  
@@ -68,15 +68,15 @@ contract Vix is BaseHook{
     }
 
 
-    function deploy2Currency(uint256 _currency1Id,uint256 _currency2Id, string[2] memory _tokenName, string[2] memory _tokenSymbol,uint deadline) public returns(address[2] memory){
-        console.log("isPairInitiated: ",isPairInitiated[_currency1Id][_currency2Id]);
-        console.log("pairEndingTime: ",pairEndingTime[_currency1Id][_currency2Id]);
+    function deploy2Currency(address _currency0,address _currency1, string[2] memory _tokenName, string[2] memory _tokenSymbol,uint deadline) public returns(address[2] memory){
+        console.log("isPairInitiated: ",isPairInitiated[_currency0][_currency1]);
+        console.log("pairEndingTime: ",pairEndingTime[_currency0][_currency1]);
         console.log("deadline: ",block.timestamp);
-        require((isPairInitiated[_currency1Id][_currency2Id] == false || pairEndingTime[_currency1Id][_currency2Id] < block.timestamp),"Pair still active");
-        require(isPairedWithUSDC(_currency1Id, _currency2Id),"Pair not paired with USDC");
-        isPairInitiated[_currency1Id][_currency2Id] = true;
-        pairInitiatedTime[_currency1Id][_currency2Id] = block.timestamp;
-        pairEndingTime[_currency1Id][_currency2Id] = block.timestamp + deadline;
+        require((isPairInitiated[_currency0][_currency1] == false || pairEndingTime[_currency0][_currency1] < block.timestamp),"Pair still active");
+        require(isPairedWithBaseToken(_currency0, _currency1),"Pair not paired with Base Token");
+        isPairInitiated[_currency0][_currency1] = true;
+        pairInitiatedTime[_currency0][_currency1] = block.timestamp;
+        pairEndingTime[_currency0][_currency1] = block.timestamp + deadline;
         address[2] memory vixTokenAddresses;
         for(uint i = 0; i < 2; i++){
             uint twentyFourHours = 3600 * 24;
@@ -85,7 +85,7 @@ contract Vix is BaseHook{
             vixTokenAddresses[i] = address(v_token);
             mintVixToken(address(this),address(v_token),250 * 1000000 * (10**18));
         }
-        vixTokens[_currency1Id][_currency2Id] = VixTokenData(vixTokenAddresses[0],vixTokenAddresses[1]);
+        vixTokens[_currency0][_currency1] = VixTokenData(vixTokenAddresses[0],vixTokenAddresses[1]);
         return (vixTokenAddresses);
     }
 
@@ -101,23 +101,24 @@ contract Vix is BaseHook{
         return true;
     }
 
-    function isPairedWithUSDC(uint256 currency_id0, uint256 currency_id1) public view returns (bool){
-        bool isUsdc = currency_id0 == uint256(uint160(USDC)) || currency_id1 == uint256(uint160(USDC));
-        require(isUsdc == true,"only USDC pair");
-        return true;
-    }
+function isPairedWithBaseToken(address _currency0, address _currency1) public view returns (bool) {
+    bool isValid = (_currency0 == baseToken) || (_currency1 == baseToken);
 
-    function resetPair(uint256 currency_id0, uint256 currency_id1,uint deadline) public returns (address[2] memory) {
-        require(isPairInitiated[currency_id0][currency_id1] == true,"Pair not initiated");
-        if(pairEndingTime[currency_id0][currency_id1] < block.timestamp){
+    require(isValid, "Pair not paired with base token");
+    return true;
+}
 
-            address VHT = vixTokens[currency_id0][currency_id1].VIXHIGHTOKEN;
-            address VLT = vixTokens[currency_id0][currency_id1].VIXLOWTOKEN;
+    function resetPair(address _currency0, address _currency1,uint deadline) public returns (address[2] memory) {
+        require(isPairInitiated[_currency0][_currency1] == true,"Pair not initiated");
+        if(pairEndingTime[_currency0][_currency1] < block.timestamp){
+
+            address VHT = vixTokens[_currency0][_currency1].VIXHIGHTOKEN;
+            address VLT = vixTokens[_currency0][_currency1].VIXLOWTOKEN;
             VolatileERC20 VHTContract = VolatileERC20(VHT);
             VolatileERC20 VLTContract = VolatileERC20(VLT);
 
 
-            (address[2] memory vixAdd)  = deploy2Currency(currency_id0,currency_id1,[VHTContract.name(),VLTContract.name()],[VHTContract.symbol(),VLTContract.symbol()], deadline);
+            (address[2] memory vixAdd)  = deploy2Currency(_currency0,_currency1,[VHTContract.name(),VLTContract.name()],[VHTContract.symbol(),VLTContract.symbol()], deadline);
             return vixAdd;
         }else{
             revert("Pair not expired");

@@ -47,10 +47,12 @@ contract VixTest is Test,Deployers {
 
 
 
-    function test_deploy2Currency() public{
+    function test_deploy2CurrencyWithBaseToken() public{
         uint pairDeadline= 3600 * 24;
+        address token0 = Currency.unwrap(key.currency0);
+        address token1 = Currency.unwrap(key.currency1);
         //deploying two currency
-        (address[2] memory vixAdd) = hook.deploy2Currency(key.currency0.toId(),key.currency1.toId(),["HIGH-VIX-BTC","LOW-VIX-BTC"],["HVB","LVP"],pairDeadline);
+        (address[2] memory vixAdd) = hook.deploy2Currency(token0,token1,["HIGH-VIX-BTC","LOW-VIX-BTC"],["HVB","LVP"],pairDeadline);
         console.log("HIGH-VIX-TOKEN: ",vixAdd[0]);
         console.log("LOW-VIX-TOKEN:",vixAdd[1]);
         address vixToken1 = vixAdd[0];
@@ -71,7 +73,7 @@ contract VixTest is Test,Deployers {
         //expect revert when trying to reset pair before deadline
         uint deadline = 3600 * 24;
         vm.expectRevert();
-        hook.resetPair(key.currency0.toId(), key.currency1.toId(),deadline);
+        hook.resetPair(token0,token1,deadline);
         //expect revert when transfering token after deadline
         vm.warp(block.timestamp + 25 hours);
         vm.expectRevert("TOKEN EXPIRED, MINTING CLOSED");
@@ -79,7 +81,7 @@ contract VixTest is Test,Deployers {
 
         //expect reseting pair after deadline
         
-        (address[2] memory vixAdd2) = hook.resetPair(key.currency0.toId(), key.currency1.toId(),deadline);
+        (address[2] memory vixAdd2) = hook.resetPair(token0,token1,deadline);
         address vixToken1Reset = vixAdd2[0];
         address vixToken2Reset = vixAdd2[1];
         MockERC20 vixToken1ResetContract = MockERC20(vixToken1Reset);
