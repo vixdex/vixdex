@@ -89,95 +89,97 @@ contract Vix is BaseHook{
      }
 
     
-function _beforeSwap(
-    address, 
-    PoolKey calldata key, 
-    IPoolManager.SwapParams calldata params, 
-    bytes calldata data
-) internal override returns (bytes4, BeforeSwapDelta, uint24) {
-    BeforeSwapDelta beforeSwapDelta;
-    uint256 amountInOutPositive = params.amountSpecified > 0 
+    function _beforeSwap(address, PoolKey calldata key, IPoolManager.SwapParams calldata params, bytes calldata data) internal override returns (bytes4, BeforeSwapDelta, uint24) {
+        BeforeSwapDelta beforeSwapDelta;
+        uint256 amountInOutPositive = params.amountSpecified > 0 
         ? uint256(params.amountSpecified) 
         : uint256(-params.amountSpecified);
 
-    address _deriveAsset = abi.decode(data, (address));
-    
-    if (params.zeroForOne) {
-        bool zeroIsBase = (Currency.unwrap(key.currency0) == baseToken);
-        (int128 _deltaSpecified, int128 _deltaUnspecified) = zeroForOneOperator(
-            key, _deriveAsset, params, amountInOutPositive, zeroIsBase
-        );
-        beforeSwapDelta = toBeforeSwapDelta(_deltaSpecified, _deltaUnspecified);
-    } else {
-        // Handle the non-zeroForOne case properly
+        address _deriveAsset = abi.decode(data, (address));
+        if(params.zeroForOne){
+
+            bool zeroIsBase = (Currency.unwrap(key.currency0) == baseToken );
+            (int128 _deltaSpecified, int128 _deltaUnspecified) = zeroForOneOperator(key, _deriveAsset, params, amountInOutPositive,zeroIsBase);
+            beforeSwapDelta = toBeforeSwapDelta(_deltaSpecified, _deltaUnspecified);
+            
+        }else{
+
+        }
+        return (this.beforeSwap.selector,beforeSwapDelta, 0);
     }
-
-    return (this.beforeSwap.selector, beforeSwapDelta, 0);
-}
-
-function zeroForOneOperator(
-    PoolKey calldata key,
-    address _deriveAsset,
-    IPoolManager.SwapParams calldata params,
-    uint256 amountInOutPositive,
-    bool zeroIsBase
-) public returns (int128, int128) {
+function zeroForOneOperator(PoolKey calldata key,address _deriveAsset,IPoolManager.SwapParams calldata params,uint amountInOutPositive,bool zeroIsBase) public returns(int128,int128) {
     VixTokenData storage vixTokenData = vixTokens[_deriveAsset];
+    console.log("currency0: ",Currency.unwrap(key.currency0));
+    console.log("currency1: ",Currency.unwrap(key.currency1));
+    console.log("vixHighToken: ",vixTokenData.vixHighToken);
+    console.log("vixLowToken: ",vixTokenData.vixLowToken);
     address _currency0 = Currency.unwrap(key.currency0);
     address _currency1 = Currency.unwrap(key.currency1);
-
     int128 _deltaSpecified;
     int128 _deltaUnspecified;
     bool isHighToken = (_currency0 == vixTokenData.vixHighToken || _currency1 == vixTokenData.vixHighToken);
     bool isExactIn = params.amountSpecified < 0;
-
+    
     if (isHighToken) {
+        console.log("isHighToken");
         uint circulation0 = vixTokenData.circulation0;
-        if (isExactIn && zeroIsBase) {
-            // Buying vixHighToken with exact input
-            uint tokenReturns = calculateTokenReturns(amountInOutPositive, circulation0);
-            updateVixTokenState(_deriveAsset, tokenReturns, amountInOutPositive);
-            
-            executeTake(key.currency0, amountInOutPositive);
-            executeSettle(key.currency1, tokenReturns);
+        if (isExactIn) {
+            if (zeroIsBase) {
+                // Buying vixHighToken with exact input
+               (uint _tokenReturns) =  circulation0.tokensForGivenCost(amountInOutPositive,SLOPE,FEE,BASE_PRICE);
+               uint tokenReturns = _tokenReturns * 1e18;
+               vixTokens[_deriveAsset].contractHoldings0 += tokenReturns;
+               vixTokens[_deriveAsset].circulation0 += tokenReturns;
+               vixTokens[_deriveAsset].reserve0 += amountInOutPositive;
+                key.currency0.take(
+                    poolManager,
+                    address(this),
+                    amountInOutPositive,
+                    true
+                );
+                console.log("take passed");
 
-            _deltaSpecified = int128(-params.amountSpecified);
-            _deltaUnspecified = -int128(uint128(tokenReturns));
-        } else if (!isExactIn && !zeroIsBase) {
-            // Selling vixHighToken with exact output
+
+                key.currency1.settle(
+                    poolManager,
+                    address(this),
+                    tokenReturns,
+                    true
+                );
+
+                console.log("settle passed");
+
+                _deltaSpecified = int128(uint128(amountInOutPositive));
+                _deltaUnspecified = -int128(uint128(tokenReturns));
+            } else {
+                // Selling vixHighToken with exact input
+            }
+        } else {
+            if (zeroIsBase) {
+                // Buying vixHighToken with exact output
+            } else {
+                // Selling vixHighToken with exact output
+            }
         }
     } else {
-        if (isExactIn && zeroIsBase) {
-            // Buying vixLowToken with exact input
-        } else if (!isExactIn && !zeroIsBase) {
-            // Selling vixLowToken with exact output
+                console.log("low iv token");
+        if (isExactIn) {
+            if (zeroIsBase) {
+                // Buying vixLowToken with exact input
+            } else {
+                // Selling vixLowToken with exact input
+            }
+        } else {
+            if (zeroIsBase) {
+                // Buying vixLowToken with exact output
+            } else {
+                // Selling vixLowToken with exact output
+            }
         }
     }
 
     return (_deltaSpecified, _deltaUnspecified);
 }
-
-// Extracted helper functions
-
-function calculateTokenReturns(uint amountIn, uint circulation) internal view returns (uint) {
-    uint _tokenReturns = circulation.tokensForGivenCost(amountIn, SLOPE, FEE, BASE_PRICE);
-    return _tokenReturns * 1e18;
-}
-
-function updateVixTokenState(address _deriveAsset, uint tokenReturns, uint amountIn) internal {
-    vixTokens[_deriveAsset].contractHoldings0 += tokenReturns;
-    vixTokens[_deriveAsset].circulation0 += tokenReturns;
-    vixTokens[_deriveAsset].reserve0 += amountIn;
-}
-
-function executeTake(Currency currency, uint amount) internal {
-    currency.take(poolManager, address(this), amount, true);
-}
-
-function executeSettle(Currency currency, uint amount) internal {
-    currency.settle(poolManager, address(this), amount, true);
-}
-
 
     function oneForZeroOperator() public{
 
