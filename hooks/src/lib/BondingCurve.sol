@@ -11,15 +11,22 @@ library BondingCurve{
     function costOfPurchasingToken(uint circulation, uint _purchaseToken, uint slope, uint basePrice,uint fee) internal pure returns (uint){
         uint n0 = circulation;
         uint k = _purchaseToken;
-        uint cost = (slope * n0 * k) + ((slope * k * k) / 2) + (basePrice * k);
-        return cost * (1+fee);
+        uint256 cost = ((slope * n0 / 1e18) * k / 1e18) + ((slope * k / 1e18) * k / (2 * 1e18)) + (basePrice * k / 1e18);
+
+        // Apply fee correctly
+        cost = (cost * (1e18 - fee)) / 1e18;        
+        return cost;
     }
 
     function costOfSellingToken(uint circulation,uint _sellToken, uint slope, uint basePrice,uint fee) internal pure returns (uint){
         uint n0 = circulation;
         uint k = _sellToken;
-        uint cost = (slope * n0 * k) - ((slope * k * k) / 2) + (basePrice * k);
-        return cost * (1-fee);
+        //uint cost = (slope * n0 * k) - ((slope * k * k) / 2) + (basePrice * k);
+        uint256 cost = ((slope * n0 / 1e18) * k / 1e18) - ((slope * k / 1e18) * k / (2 * 1e18)) + (basePrice * k / 1e18);
+
+        // Apply fee correctly
+        cost = (cost * (1e18 - fee)) / 1e18;        
+        return cost;
     }
 
     function tokensForGivenCost(
@@ -28,13 +35,13 @@ library BondingCurve{
         uint256 slope,
         uint256 fee,
         uint256 basePrice
-    ) public pure returns (uint256) {
+    ) internal pure returns (uint256) {
         require(cost > 0, "Cost must be greater than zero");
 
         // Adjust cost by removing fee impact
         uint256 adjustedCost = (cost * 1e18) / (1e18 + fee); // Keeps precision
         uint256 a = slope / 2;
-        uint256 b = ((slope * circulation) / 1e18) + basePrice;
+        uint256 b = (slope * (circulation / 1e18)) + basePrice;
         int256 c = -int256(adjustedCost); // Keep precision
 
         // Calculate discriminant safely
