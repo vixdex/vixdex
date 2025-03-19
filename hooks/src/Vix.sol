@@ -96,6 +96,7 @@ contract Vix is BaseHook{
         : uint256(-params.amountSpecified);
 
         address _deriveAsset = abi.decode(data, (address));
+
         if(params.zeroForOne){
 
             bool zeroIsBase = (Currency.unwrap(key.currency0) == baseToken );
@@ -153,19 +154,72 @@ function zeroForOneOperator(PoolKey calldata key,address _deriveAsset,IPoolManag
                 _deltaUnspecified = -int128(uint128(tokenReturns));
             } else {
                 // Selling vixHighToken with exact input
+                require(circulation0 > amountInOutPositive,"Not enough liquidity to sell");
+                (uint _baseTokenReturns) = circulation0.costOfSellingToken(amountInOutPositive,SLOPE,BASE_PRICE,FEE);
+
             }
         } else {
             if (zeroIsBase) {
                 // Buying vixHighToken with exact output
+               (uint cost)=  circulation0.costOfPurchasingToken(amountInOutPositive,SLOPE,BASE_PRICE,FEE);
+               vixTokens[_deriveAsset].contractHoldings0 += amountInOutPositive;
+               vixTokens[_deriveAsset].circulation0 += amountInOutPositive;
+               vixTokens[_deriveAsset].reserve0 += cost;
+               console.log("cost: ",cost);
+               key.currency0.take(
+                    poolManager,
+                    address(this),
+                    cost,
+                    true
+                );
+                key.currency1.settle(
+                    poolManager,
+                    address(this),
+                    amountInOutPositive,
+                    true
+                );
+                _deltaSpecified = -int128(uint128(amountInOutPositive));
+                _deltaUnspecified = int128(uint128(cost));
+
             } else {
                 // Selling vixHighToken with exact output
+                require(vixTokenData.reserve0 > amountInOutPositive,"Not enough liquidity to sell");
+                (uint _tokenReturns) = circulation0.tokensForGivenCost(amountInOutPositive,SLOPE,FEE,BASE_PRICE);
+
             }
         }
     } else {
-                console.log("low iv token");
+        uint circulation1 = vixTokenData.circulation1;
+
         if (isExactIn) {
             if (zeroIsBase) {
                 // Buying vixLowToken with exact input
+                (uint _tokenReturns) =  circulation1.tokensForGivenCost(amountInOutPositive,SLOPE,FEE,BASE_PRICE);
+               uint tokenReturns = _tokenReturns * 1e18;
+               vixTokens[_deriveAsset].contractHoldings1 += tokenReturns;
+               vixTokens[_deriveAsset].circulation1 += tokenReturns;
+               vixTokens[_deriveAsset].reserve1 += amountInOutPositive;
+                key.currency0.take(
+                    poolManager,
+                    address(this),
+                    amountInOutPositive,
+                    true
+                );
+                console.log("take passed low");
+
+
+                key.currency1.settle(
+                    poolManager,
+                    address(this),
+                    tokenReturns,
+                    true
+                );
+
+                console.log("settle passed low");
+
+                _deltaSpecified = int128(uint128(amountInOutPositive));
+                _deltaUnspecified = -int128(uint128(tokenReturns));
+                
             } else {
                 // Selling vixLowToken with exact input
             }

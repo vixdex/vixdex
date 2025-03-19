@@ -31,7 +31,6 @@ contract VixTest is Test,Deployers {
         console.log("_baseTokenCurrency: ",Currency.unwrap(currency0));
         baseToken = address(Currency.unwrap(currency0));
         deriveAsset = address(Currency.unwrap(currency1));
-        deployFreshManagerAndRouters();
         address hookAddress = address(
             uint160(
                     Hooks.BEFORE_ADD_LIQUIDITY_FLAG |
@@ -68,17 +67,13 @@ contract VixTest is Test,Deployers {
 
 
 
-    function test_swapHighVolatileToken() public{
-        console.log("test-1");
+    function test_swapZeroForOneHighVolatileToken_ExactIn() public{
+
        
         Currency token0;
         Currency token1;
 
         (token0,token1) = SortTokens.sort(MockERC20(baseToken),MockERC20(ivTokenAdd[0]));
-        console.log("balance of base token: ",MockERC20(baseToken).balanceOf(address(this)));
-        console.log("address of token 0: ",address(Currency.unwrap(token0)));
-        console.log("address of token 1: ",address(Currency.unwrap(token1)));
-        MockERC20(Currency.unwrap(token0)).approve(address(manager), type(uint256).max);
         //initializing Pool for base token & high IV token
         (key, ) = initPool(
             token0,
@@ -88,17 +83,14 @@ contract VixTest is Test,Deployers {
             SQRT_PRICE_1_1
         );
 
-                //swap
+        //swap
         PoolSwapTest.TestSettings memory settings = PoolSwapTest.TestSettings({
         takeClaims: false,
         settleUsingBurn: false
         });
         console.log("balanceOf vix0 before:",MockERC20(ivTokenAdd[0]).balanceOf(address(this)));
         bytes memory hookData = abi.encode(deriveAsset);
-        MockERC20(baseToken).approve(address(manager), type(uint256).max);
 
-        uint256 allowance = MockERC20(baseToken).allowance(address(this), address(manager));
-console.log("Allowance:", allowance);
         swapRouter.swap(
             key,
             IPoolManager.SwapParams(
@@ -166,6 +158,80 @@ console.log("Allowance:", allowance);
         // assertEq(vixToken1ResetContract.balanceOf(address(this)), 250 * (10**18));
 
 
+    }
+
+    function test_swapZeroForOneHighVolatileToken_ExactOut() public{
+        Currency token0;
+        Currency token1;
+
+        (token0,token1) = SortTokens.sort(MockERC20(baseToken),MockERC20(ivTokenAdd[0]));
+        //initializing Pool for base token & high IV token
+        (key, ) = initPool(
+            token0,
+            token1, //high IV token
+            hook,
+            3000,
+            SQRT_PRICE_1_1
+        );
+
+        //swap
+        PoolSwapTest.TestSettings memory settings = PoolSwapTest.TestSettings({
+        takeClaims: false,
+        settleUsingBurn: false
+        });
+        console.log("balanceOf vix0 before in exact out:",MockERC20(ivTokenAdd[0]).balanceOf(address(this)));
+        bytes memory hookData = abi.encode(deriveAsset);
+
+        swapRouter.swap(
+            key,
+            IPoolManager.SwapParams(
+            {
+            zeroForOne: true,
+            amountSpecified: 166665 * 1 ether,
+            sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE - 1
+            }
+            ), 
+            settings,
+            hookData
+        );
+        console.log("balanceOf vix0 after in exact out:",MockERC20(ivTokenAdd[0]).balanceOf(address(this)));
+    }
+
+    function test_swapZeroForOneLowVolatileToken_ExactIn() public{
+        Currency token0;
+        Currency token1;
+
+        (token0,token1) = SortTokens.sort(MockERC20(baseToken),MockERC20(ivTokenAdd[1]));
+        //initializing Pool for base token & high IV token
+        (key, ) = initPool(
+            token0,
+            token1, //high IV token
+            hook,
+            3000,
+            SQRT_PRICE_1_1
+        );
+
+        //swap
+        PoolSwapTest.TestSettings memory settings = PoolSwapTest.TestSettings({
+        takeClaims: false,
+        settleUsingBurn: false
+        });
+        console.log("balanceOf vix1 before:",MockERC20(ivTokenAdd[1]).balanceOf(address(this)));
+        bytes memory hookData = abi.encode(deriveAsset);
+
+        swapRouter.swap(
+            key,
+            IPoolManager.SwapParams(
+            {
+            zeroForOne: true,
+            amountSpecified: -1 ether,
+            sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+            }
+            ), 
+            settings,
+            hookData
+        );
+        console.log("balanceOf vix1 after:",MockERC20(ivTokenAdd[1]).balanceOf(address(this)));
     }
 
     
