@@ -13,6 +13,7 @@ import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {Volatility} from "./lib/Volatility.sol";
 import {VolatileERC20} from "./VolatileERC20.sol";
 import {BondingCurve} from "./lib/BondingCurve.sol";
+import {ImpliedVolatility} from "./lib/ImpliedVolatility.sol";
 import {BeforeSwapDelta, toBeforeSwapDelta, BeforeSwapDeltaLibrary} from "v4-core/src/types/BeforeSwapDelta.sol";
 import "forge-std/console.sol";  // Foundry's console library
 contract Vix is BaseHook{
@@ -21,20 +22,21 @@ contract Vix is BaseHook{
     using StateLibrary for IPoolManager;
     using Volatility for int;
     using BondingCurve for uint;
-
+    using ImpliedVolatility for uint160;
     error invalidLiquidityAction();
     mapping(address=>bool) public isPairInitiated;
     mapping(address=>uint) public pairInitiatedTime;
     mapping(address=>uint) public pairEndingTime;
-    uint constant public SLOPE = 300; //0.03% || 0.0003
+    mapping(address=>uint) public pairFee;
+    mapping(address=>address) public poolAddress; //
+    uint constant public SLOPE = 1e9; // 0.000000000000001
     uint constant public FEE = 10000; //1% || 0.01
     uint constant public BASE_PRICE = 0.0000060 * 1e18;
     uint constant public IV_TOKEN_SUPPLY = 250 * 1000000 * (10**18);
+    uint constant public RESERVE_SHIFT_SLOPE = 0.03 * 1e18; //3% || according to reserve shift math
     struct VixTokenData {
         address vixHighToken;
         address vixLowToken;
-        uint price0;
-        uint price1;
         uint circulation0;
         uint circulation1;
         uint contractHoldings0;
@@ -308,7 +310,7 @@ function deploy2Currency(address deriveToken, string[2] memory _tokenName, strin
             vixTokenAddresses[i] = address(v_token);
             mintVixToken(address(this),address(v_token),IV_TOKEN_SUPPLY);
     }
-    vixTokens[deriveToken] = VixTokenData(vixTokenAddresses[0],vixTokenAddresses[1],BASE_PRICE,BASE_PRICE,0,0,0,0,0,0);
+    vixTokens[deriveToken] = VixTokenData(vixTokenAddresses[0],vixTokenAddresses[1],0,0,0,0,0,0);
     liquidateVixTokenToPm(IV_TOKEN_SUPPLY, vixTokenAddresses[0], vixTokenAddresses[1]);
     return (vixTokenAddresses);
 }
@@ -382,10 +384,66 @@ function resetPair(address deriveToken,uint deadline) public returns (address[2]
     }
 }
 
-function getVixData(address deriveAsset)public view returns (address vixHighToken,address _vixLowToken,uint _price0,uint _price1,uint _circulation0,uint _circulation1,uint _contractHoldings0,uint _contractHoldings1,uint _reserve0,uint _reserve1){
+function getVixData(address deriveAsset)public view returns (address vixHighToken,address _vixLowToken,uint _circulation0,uint _circulation1,uint _contractHoldings0,uint _contractHoldings1,uint _reserve0,uint _reserve1){
      VixTokenData memory vixTokenData = vixTokens[deriveAsset];
-     return (vixTokenData.vixHighToken,vixTokenData.vixLowToken,vixTokenData.price0,vixTokenData.price1,vixTokenData.circulation0,vixTokenData.circulation1,vixTokenData.contractHoldings0,vixTokenData.contractHoldings1,vixTokenData.reserve0,vixTokenData.reserve1);
+     return (vixTokenData.vixHighToken,vixTokenData.vixLowToken,vixTokenData.circulation0,vixTokenData.circulation1,vixTokenData.contractHoldings0,vixTokenData.contractHoldings1,vixTokenData.reserve0,vixTokenData.reserve1);
 }
+
+function calculateIv(uint160 volume,uint160 liquidity,uint160 fee) public view returns (uint160 _iv){
+   return volume.ivCalculation(liquidity,fee);
+}
+
+function swapReserve(uint initialIv, uint currentIv, uint reserve0, uint reserve1,uint circulation0,uint circulation1,address deriveAsset) public  returns(uint,uint){
+    if(initialIv > currentIv){
+        /* 
+        1. swap certain amount of reserve0 (high token Reserve) to reserve1 (low token Reserve) 
+        2. burn contract holding 0 (high token) and mint contract holding 1 (low token)
+        3. price of high token will decrease due to burn of contract holding 0 
+        4. price of low token will increase due to mint of contract holding 1
+        4. for smooth sell and buy, we swapped reserve
+        */
+        uint reserveShift = (RESERVE_SHIFT_SLOPE * (initialIv - currentIv) * (reserve0)) / 1e18;
+        uint tokenBurn = (reserveShift * circulation0) / reserve0;
+        uint tokenMint = (reserveShift * circulation1) / reserve1;
+
+
+        vixTokens[deriveAsset].reserve0 -= reserveShift;
+        vixTokens[deriveAsset].reserve1 += reserveShift;
+        vixTokens[deriveAsset].contractHoldings0 -= tokenBurn;
+        vixTokens[deriveAsset].contractHoldings1 += tokenMint;
+        return (reserveShift,tokenBurn);
+
+
+    }else if(initialIv < currentIv){
+        /* 
+        1. swap certain amount of reserve1 (low token Reserve) to reserve0 (high token Reserve) 
+        2. burn contract holding 1 (low token) and mint contract holding 0 (high token)
+        3. price of low token will decrease due to burn of contract holding 1 
+        4. price of high token will increase due to mint of contract holding 0
+        4. for smooth sell and buy, we swapped reserve
+        */
+
+        uint reserveShift = (RESERVE_SHIFT_SLOPE * (currentIv - initialIv) * (reserve1)) / 1e18;
+        uint tokenBurn = (reserveShift * circulation1) / reserve1;
+        uint tokenMint = (reserveShift * circulation0) / reserve0;
+
+        vixTokens[deriveAsset].reserve0 += reserveShift;
+        vixTokens[deriveAsset].reserve1 -= reserveShift;
+        vixTokens[deriveAsset].contractHoldings1 -= tokenBurn;
+        vixTokens[deriveAsset].contractHoldings0 += tokenMint;
+        return (reserveShift,tokenMint);
+    }else{
+        return (0,0);
+    }
+     
+}
+
+function vixTokensPrice(uint circulation) public pure returns(uint){
+    uint price = ((SLOPE * circulation) / 1e18) + BASE_PRICE;
+    return (price); // we should do price/1e18 for readable price
+    
+}
+
 
 }
 

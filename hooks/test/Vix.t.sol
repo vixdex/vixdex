@@ -103,11 +103,10 @@ contract VixTest is Test,Deployers {
             settings,
             hookData
         );
-          (address vixHighToken,address _vixLowToken,uint _price0,uint _price1,uint _circulation0,uint _circulation1,uint _contractHoldings0,uint _contractHoldings1,uint _reserve0,uint _reserve1) =hook.getVixData(deriveAsset);
+          (address vixHighToken,address _vixLowToken,uint _circulation0,uint _circulation1,uint _contractHoldings0,uint _contractHoldings1,uint _reserve0,uint _reserve1) =hook.getVixData(deriveAsset);
           console.log("circulation0: ",_circulation0);
           console.log("reserve0: ",_reserve0);
           console.log("contractHoldings0: ",_contractHoldings0);
-          console.log("price0: ",_price0);
         console.log("balanceOf vix0 after:",MockERC20(ivTokenAdd[0]).balanceOf(address(this)));
 
         uint balance = MockERC20(ivTokenAdd[0]).balanceOf(address(this));
@@ -346,6 +345,20 @@ contract VixTest is Test,Deployers {
         console.log("balanceOf vix1 after sold:",MockERC20(ivTokenAdd[1]).balanceOf(address(this)));
     
     }
+
+    function test_calculateIv() public{
+        uint160 volume = 75520000;
+        uint160 tickLiquidity = 13401+4761696;
+        uint160 fee = 0.003 * 1000;
+        uint160 iv = hook.calculateIv(volume,tickLiquidity,fee);
+        console.log("iv: ",iv);
+      //  (uint reserveShift,uint tokenBurn) = hook.swapReserve(iv,23861137419,1000000000000000000,1000000000000000000,1000000000000000000000,1000000000000000000000,address(0));
+       // console.log("reserve shift: ",reserveShift);
+       // console.log("token burn: ",tokenBurn);
+        uint price = hook.vixTokensPrice((166670 * 1e18));
+        console.log("price: ",price);
+    }
+    
     
 
 }
