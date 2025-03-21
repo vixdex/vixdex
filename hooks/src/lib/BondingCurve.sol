@@ -2,11 +2,39 @@
 pragma solidity ^0.8.13;
 import "forge-std/console.sol";  // Foundry's console library
 
+    /**
+     * @title Bonding Curve Library
+     * @dev This library provides the necessary functions to operate a bonding curve.
+     * @dev It is used to calculate the cost of purchasing/selling tokens
+     * @dev and to calculate the number of tokens that can be purchased/sold
+     * @dev for a given cost.
+     * @notice This library is used by the `vix` contract.
+     */
+
 library BondingCurve{
+
+    /**
+     * @dev This function calculates the price of a token given the bonding curve parameters.
+     * @param slope The slope of the bonding curve.
+     * @param circulation The current circulation of the token.
+     * @param basePrice The base price of the token.
+     * @return The price of the token.
+     */
     function settingPrice(uint slope, uint circulation, uint basePrice) internal pure returns (uint){
         uint price = (slope * circulation)+basePrice;
         return price;
     }
+
+    /**
+     * @dev This function calculates the cost of purchasing a specified number of tokens based on the bonding curve parameters.
+     * @param circulation The current circulation of the token.
+     * @param _purchaseToken The number of tokens to be purchased.
+     * @param slope The slope of the bonding curve.
+     * @param basePrice The base price of the token.
+     * @param fee The transaction fee applied to the purchase, represented as a fraction of 1e18.
+     * @return The total cost of purchasing the specified number of tokens, including the fee.
+     */
+
 
     function costOfPurchasingToken(uint circulation, uint _purchaseToken, uint slope, uint basePrice,uint fee) internal pure returns (uint){
         uint n0 = circulation;
@@ -17,6 +45,17 @@ library BondingCurve{
         cost = (cost * (1e18 - fee)) / 1e18;        
         return cost;
     }
+    
+
+    /**
+     * @dev This function calculates the cost of selling a specified number of tokens based on the bonding curve parameters.
+     * @param circulation The current circulation of the token.
+     * @param _sellToken The number of tokens to be sold.
+     * @param slope The slope of the bonding curve.
+     * @param basePrice The base price of the token.
+     * @param fee The transaction fee applied to the sale, represented as a fraction of 1e18.
+     * @return The total revenue from selling the specified number of tokens, including the fee.
+     */
 
     function costOfSellingToken(uint circulation,uint _sellToken, uint slope, uint basePrice,uint fee) internal pure returns (uint){
         uint n0 = circulation;
@@ -29,13 +68,17 @@ library BondingCurve{
         return cost;
     }
 
-    function tokensForGivenCost(
-        uint256 circulation,
-        uint256 cost,
-        uint256 slope,
-        uint256 fee,
-        uint256 basePrice
-    ) internal pure returns (uint256) {
+    /**
+     * @dev This function calculates the number of tokens that can be purchased with a specified cost based on the bonding curve parameters.
+     * @param circulation The current circulation of the token.
+     * @param cost The cost of purchasing the tokens.
+     * @param slope The slope of the bonding curve.
+     * @param fee The transaction fee applied to the purchase, represented as a fraction of 1e18.
+     * @param basePrice The base price of the token.
+     * @return The total number of tokens that can be purchased with the specified cost, including the fee.
+     */
+
+    function tokensForGivenCost(uint256 circulation,uint256 cost,uint256 slope,uint256 fee,uint256 basePrice) internal pure returns (uint256) {
         require(cost > 0, "Cost must be greater than zero");
 
         // Adjust cost by removing fee impact
@@ -57,6 +100,13 @@ library BondingCurve{
 
         return uint256(k);
     }
+
+    /** 
+     * @notice it is babylonian square root method
+     * @param x The variance of the tick price.
+     * @return y  square root.
+     */
+
        function sqrt(uint x) internal pure returns (int y) {
         if (x == 0) return 0;
         uint z = (x + 1) / 2;

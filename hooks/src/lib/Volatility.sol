@@ -3,7 +3,7 @@ pragma solidity ^0.8.13;
 
 /**
  * @title Volatility Library
- * @notice This library provides functions to calculate volatility of a pool.
+ * @notice This library provides functions to calculate volatility of a pool but not used by any contract!.
  */
 library Volatility{
 

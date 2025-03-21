@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
+
+
 pragma solidity ^0.8.26;
 
 import {BaseHook} from "@uniswap/v4-periphery/src/utils/BaseHook.sol";
@@ -16,6 +18,32 @@ import {BondingCurve} from "./lib/BondingCurve.sol";
 import {ImpliedVolatility} from "./lib/ImpliedVolatility.sol";
 import {BeforeSwapDelta, toBeforeSwapDelta, BeforeSwapDeltaLibrary} from "v4-core/src/types/BeforeSwapDelta.sol";
 import "forge-std/console.sol";  // Foundry's console library
+
+/**
+ * @title Vix - Implied Volatility Trading Contract
+ * @notice This contract facilitates direct trading based on the implied volatility of a given asset.
+ *         It issues two types of tokens per asset:
+ *         1. **High Volatility Token (HVT)**: Its value increases when demand and market volatility rise.
+ *         2. **Low Volatility Token (LVT)**: Its value increases when demand rises but market volatility decreases.
+ *         Users can trade these tokens in a liquidity pool, allowing speculation on market volatility.
+ * 
+ * @dev This contract utilizes a **custom bonding curve** for pricing, where the price is determined by the 
+ *      circulating supply (holding). Instead of relying purely on token holdings, the contract maintains 
+ *      an internal accounting system that tracks volatility shifts separately. 
+ *      
+ *      - **Bonding Curve Mechanism**: The price of each token is influenced by both user demand and the 
+ *        contract's internal volatility tracking system. When a user buys a token, the supply increases, 
+ *        influencing the bonding curve.
+ *      - **Volatility Impact on Pricing**: The contract adjusts its internal holding value (not an actual 
+ *        token balance, just a numerical tracker) based on market volatility changes and it will change the price.
+ *      - **Reserve Adjustment**: To ensure fair liquidity, the reserves of both HVT and LVT are dynamically 
+ *        shifted. When volatility increases, more reserve shifts towards HVT, making it more expensive, 
+ *        and when volatility decreases, the reverse happens.
+ * 
+ * @custom:warning This contract is still under development(not ready for production). Many comments are missing, and some are AI-generated comments.
+ *                 Please review the code logic carefully to understand what it exactly doing.
+ */
+
 contract Vix is BaseHook{
     using CurrencyLibrary for Currency;
     using CurrencySettler for Currency;
@@ -61,7 +89,8 @@ contract Vix is BaseHook{
         baseToken = _baseToken;
     }
 
-    //getting Hook permission  
+//getting Hook permission  
+
 function getHookPermissions() public pure override returns (Hooks.Permissions memory){
     return Hooks.Permissions({
                 beforeInitialize: false,
@@ -81,15 +110,39 @@ function getHookPermissions() public pure override returns (Hooks.Permissions me
     });
 }
 
+
+/**
+ * @notice beforeAddLiquidty hook will revert if called
+
+ */
+
 function _beforeAddLiquidity(address, PoolKey calldata, IPoolManager.ModifyLiquidityParams calldata , bytes calldata)internal view override  returns (bytes4){
     revert invalidLiquidityAction();
 }
 
+/**
+ * @notice beforeRemoveLiquidty hook will revert if called
+
+ */
     
 function _beforeRemoveLiquidity(address, PoolKey calldata, IPoolManager.ModifyLiquidityParams calldata , bytes calldata)internal view override  returns (bytes4){
     revert invalidLiquidityAction();
 }
 
+
+/**
+ * @dev Hook function executed before a swap occurs in the pool.
+ *      This function determines the swap direction and computes the 
+ *      necessary deltas for the swap.
+ * 
+ * @param key The pool key containing details of the liquidity pool.
+ * @param params Swap parameters including amount specified and swap direction.
+ * @param data Encoded additional data, expected to contain the derived asset address.
+ * 
+ * @return bytes4 Selector for the beforeSwap function.
+ * @return BeforeSwapDelta Struct containing the calculated deltas for the swap.
+ * @return uint24 Always returns 0, can be used for future extensibility.
+ */
     
 function _beforeSwap(address,PoolKey calldata key,IPoolManager.SwapParams calldata params,bytes calldata data) internal override returns (bytes4, BeforeSwapDelta, uint24) {
     BeforeSwapDelta beforeSwapDelta;
@@ -122,6 +175,21 @@ function _beforeSwap(address,PoolKey calldata key,IPoolManager.SwapParams callda
     return (this.beforeSwap.selector, beforeSwapDelta, 0);
 }
 
+/**
+ * @dev Handles the swap logic when swapping from token0 to token1 (zeroForOne).
+ *      Determines whether the asset being swapped is a high or low volatility token 
+ *      and routes the execution accordingly.
+ *
+ * @param key The pool key containing details of the liquidity pool.
+ * @param _deriveAsset The address of the derived asset being swapped.
+ * @param params Swap parameters including amount specified and swap direction.
+ * @param amountInOutPositive The absolute value of the swap amount.
+ * @param zeroIsBase Boolean indicating whether currency0 is the base token.
+ *
+ * @return int128 The delta amount of the specified token after processing the swap.
+ * @return int128 The delta amount of the unspecified token after processing the swap.
+ */
+
 function zeroForOneOperator(PoolKey calldata key,address _deriveAsset,IPoolManager.SwapParams calldata params,uint256 amountInOutPositive,bool zeroIsBase) public returns (int128, int128) {
     VixTokenData storage vixTokenData = vixTokens[_deriveAsset];
     address _currency0 = Currency.unwrap(key.currency0);
@@ -133,6 +201,21 @@ function zeroForOneOperator(PoolKey calldata key,address _deriveAsset,IPoolManag
         ? processHighToken_ZeroOne(key, vixTokenData, amountInOutPositive, zeroIsBase, isExactIn)
         : processLowToken_ZeroOne(key, vixTokenData, amountInOutPositive, zeroIsBase, isExactIn);
 }
+
+/**
+ * @dev Processes a swap involving a high-volatility token when swapping from token0 to token1.
+ *      Determines whether the swap is an exact input or exact output transaction and 
+ *      routes the execution accordingly.
+ *
+ * @param key The pool key containing details of the liquidity pool.
+ * @param vixTokenData Storage reference to the Vix token data for the derived asset.
+ * @param amountInOutPositive The absolute value of the swap amount.
+ * @param zeroIsBase Boolean indicating whether currency0 is the base token.
+ * @param isExactIn Boolean indicating if the swap is an exact input transaction (true) or exact output (false).
+ *
+ * @return int128 The delta amount of the specified token after processing the swap.
+ * @return int128 The delta amount of the unspecified token after processing the swap.
+ */
 
 function processHighToken_ZeroOne(PoolKey calldata key,VixTokenData storage vixTokenData,uint256 amountInOutPositive,bool zeroIsBase,bool isExactIn) private returns (int128, int128) {
     uint256 circulation = vixTokenData.circulation0;
@@ -147,6 +230,20 @@ function processHighToken_ZeroOne(PoolKey calldata key,VixTokenData storage vixT
     }
 }
 
+/**
+ * @dev Handles the purchase of a high-volatility token with an exact input amount.
+ *      Calculates the number of tokens returned based on the given cost, updates the 
+ *      circulation and reserves, and transfers the appropriate amounts between the pool 
+ *      and contract.
+ *
+ * @param key The pool key containing details of the liquidity pool.
+ * @param vixTokenData Storage reference to the Vix token data for the derived asset.
+ * @param amountInOutPositive The exact input amount of currency0 used to purchase the high-volatility token.
+ *
+ * @return int128 The delta amount of currency0 spent in the swap (positive value).
+ * @return int128 The delta amount of the high-volatility token received in the swap (negative value).
+ */
+
 function buyHighTokenExactInput(PoolKey calldata key,VixTokenData storage vixTokenData,uint256 amountInOutPositive) private returns (int128, int128) {
     uint256 tokenReturns = vixTokenData.circulation0.tokensForGivenCost(amountInOutPositive, SLOPE, FEE, BASE_PRICE) * 1e18;
     vixTokenData.contractHoldings0 += tokenReturns;
@@ -156,6 +253,20 @@ function buyHighTokenExactInput(PoolKey calldata key,VixTokenData storage vixTok
     key.currency1.settle(poolManager, address(this), tokenReturns, true);
     return (int128(uint128(amountInOutPositive)), -int128(uint128(tokenReturns)));
 }
+
+/**
+ * @dev Handles the purchase of a high-volatility token with an exact output amount.
+ *      Determines the required cost to obtain the desired number of tokens, updates
+ *      circulation and reserves, and transfers the appropriate amounts between the
+ *      pool and contract.
+ *
+ * @param key The pool key containing details of the liquidity pool.
+ * @param vixTokenData Storage reference to the Vix token data for the derived asset.
+ * @param amountInOutPositive The exact output amount of high-volatility tokens to be received.
+ *
+ * @return int128 The delta amount of the high-volatility token spent in the swap (negative value).
+ * @return int128 The delta amount of currency0 required to complete the swap (positive value).
+ */
 
 function buyHighTokenExactOutput(PoolKey calldata key,VixTokenData storage vixTokenData,uint256 amountInOutPositive) private returns (int128, int128) {
     uint256 cost = vixTokenData.circulation0.costOfPurchasingToken(amountInOutPositive, SLOPE, BASE_PRICE, FEE);
@@ -293,6 +404,17 @@ function sellLowTokenExactOutput(PoolKey calldata key,VixTokenData storage vixTo
    return  (-int128(uint128(amountInOutPositive)), int128(uint128(tokensToSell)));
 }
 
+/**
+ * @dev Deploys two volatile ERC20 tokens for a given derived asset and initializes their liquidity.
+ *      Ensures that an existing pair is either inactive or expired before deploying new tokens.
+ *
+ * @param deriveToken The address of the derived asset for which the volatile tokens are created.
+ * @param _tokenName An array containing the names of the two volatile tokens.
+ * @param _tokenSymbol An array containing the symbols of the two volatile tokens.
+ * @param deadline The duration (in seconds) after which the token pair will expire.
+ *
+ * @return address[2] The addresses of the newly deployed volatile ERC20 tokens.
+ */
 
 function deploy2Currency(address deriveToken, string[2] memory _tokenName, string[2] memory _tokenSymbol,uint deadline) public returns(address[2] memory){
     console.log("isPairInitiated: ",isPairInitiated[deriveToken]);
@@ -315,6 +437,16 @@ function deploy2Currency(address deriveToken, string[2] memory _tokenName, strin
     return (vixTokenAddresses);
 }
 
+/**
+ * @dev Transfers a specified amount of Vix tokens to the pool manager for liquidity provisioning.
+ *
+ * @param amountEach The amount of each Vix token to be transferred.
+ * @param currency0 The address of the first currency (token) being transferred.
+ * @param currency1 The address of the second currency (token) being transferred.
+ *
+ * @return bool Returns true if the operation is successful.
+ */
+
 function liquidateVixTokenToPm(uint256 amountEach, address currency0, address currency1) internal returns (bool) {
     
     poolManager.unlock(
@@ -328,6 +460,14 @@ function liquidateVixTokenToPm(uint256 amountEach, address currency0, address cu
         )
     );
 }
+/**
+ * @dev Callback function triggered by the pool manager to handle unlocking and transferring tokens.
+ *      This function settles and transfers liquidity amounts between the pool and the contract/sender.
+ *
+ * @param data Encoded callback data containing details of the transfer operation.
+ *
+ * @return bytes Returns an empty byte array upon successful execution.
+ */
 
 function unlockCallback(bytes calldata data) external onlyPoolManager returns (bytes memory) {
     CallbackData memory callbackData = abi.decode(data, (CallbackData));
@@ -366,6 +506,15 @@ function mintVixToken(address to,address _token,uint _amount) internal returns (
     return true;
 }
 
+/**
+ * @dev Resets a token pair if the existing pair has expired. Deploys new currency tokens
+ *      and assigns them to the provided deriveToken address.
+ *
+ * @param deriveToken The address of the token for which the pair is being reset.
+ * @param deadline The new expiration deadline for the pair.
+ *
+ * @return address[2] memory Returns the addresses of the newly deployed currency tokens.
+ */
 
 function resetPair(address deriveToken,uint deadline) public returns (address[2] memory) {
     require(isPairInitiated[deriveToken] == true,"Pair not initiated");
@@ -389,9 +538,19 @@ function getVixData(address deriveAsset)public view returns (address vixHighToke
      return (vixTokenData.vixHighToken,vixTokenData.vixLowToken,vixTokenData.circulation0,vixTokenData.circulation1,vixTokenData.contractHoldings0,vixTokenData.contractHoldings1,vixTokenData.reserve0,vixTokenData.reserve1);
 }
 
+/**
+ * @dev it will calculate the implied volatility of the pair
+ *
+ * @param volume volume of the pool from uniswap v3.
+ * @param liquidity liquidity of the pool from uniswap v3.
+ *@param fee fee of the pool from uniswap v3.
+ * @return _iv it will return the iv.
+ */
+
 function calculateIv(uint160 volume,uint160 liquidity,uint160 fee) public view returns (uint160 _iv){
    return volume.ivCalculation(liquidity,fee);
 }
+
 
 function swapReserve(uint initialIv, uint currentIv, uint reserve0, uint reserve1,uint circulation0,uint circulation1,address deriveAsset) public  returns(uint,uint){
     if(initialIv > currentIv){
