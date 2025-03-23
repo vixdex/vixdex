@@ -45,18 +45,23 @@ import "forge-std/console.sol";  // Foundry's console library
  */
 
 contract Vix is BaseHook{
+
+    // events
+    event PairInitiated(address indexed _deriveToken, address indexed _vixHighToken, address indexed _vixLowToken,uint _initiatedTime ,uint256 _deadline,uint initiatedIV, bool isReset);
+    event PairExpired(address indexed deriveToken, address indexed vixHighToken, address indexed vixLowToken, uint initatedIV, uint closedIV, uint expiredTime);
+    //libraris
     using CurrencyLibrary for Currency;
     using CurrencySettler for Currency;
     using StateLibrary for IPoolManager;
     using Volatility for int;
     using BondingCurve for uint;
     using ImpliedVolatility for uint160;
+    //errors
     error invalidLiquidityAction();
+    // state variables
     mapping(address=>bool) public isPairInitiated;
     mapping(address=>uint) public pairInitiatedTime;
     mapping(address=>uint) public pairEndingTime;
-    mapping(address=>uint) public pairFee;
-    mapping(address=>address) public poolAddress; //
     uint constant public SLOPE = 1e9; // 0.000000000000001
     uint constant public FEE = 10000; //1% || 0.01
     uint constant public BASE_PRICE = 0.0000060 * 1e18;
@@ -71,9 +76,12 @@ contract Vix is BaseHook{
         uint contractHoldings1;
         uint reserve0;
         uint reserve1;
+        address poolAddress;
+        uint160 initialIv;
     }
 
     mapping(address=>VixTokenData) vixTokens;
+
     address public baseToken;
 
     struct CallbackData {
@@ -416,7 +424,7 @@ function sellLowTokenExactOutput(PoolKey calldata key,VixTokenData storage vixTo
  * @return address[2] The addresses of the newly deployed volatile ERC20 tokens.
  */
 
-function deploy2Currency(address deriveToken, string[2] memory _tokenName, string[2] memory _tokenSymbol,uint deadline) public returns(address[2] memory){
+function deploy2Currency(address deriveToken, string[2] memory _tokenName, string[2] memory _tokenSymbol,address _poolAddress,uint160 fee,uint160 liquidity,uint160 volume,uint deadline) public returns(address[2] memory){
     console.log("isPairInitiated: ",isPairInitiated[deriveToken]);
     console.log("pairEndingTime: ",pairEndingTime[deriveToken]);
     console.log("deadline: ",block.timestamp);
@@ -432,7 +440,9 @@ function deploy2Currency(address deriveToken, string[2] memory _tokenName, strin
             vixTokenAddresses[i] = address(v_token);
             mintVixToken(address(this),address(v_token),IV_TOKEN_SUPPLY);
     }
-    vixTokens[deriveToken] = VixTokenData(vixTokenAddresses[0],vixTokenAddresses[1],0,0,0,0,0,0);
+
+    uint160 initialIv = calculateIv(volume,liquidity,fee);
+    vixTokens[deriveToken] = VixTokenData(vixTokenAddresses[0],vixTokenAddresses[1],0,0,0,0,0,0,_poolAddress,initialIv);
     liquidateVixTokenToPm(IV_TOKEN_SUPPLY, vixTokenAddresses[0], vixTokenAddresses[1]);
     return (vixTokenAddresses);
 }
@@ -516,7 +526,7 @@ function mintVixToken(address to,address _token,uint _amount) internal returns (
  * @return address[2] memory Returns the addresses of the newly deployed currency tokens.
  */
 
-function resetPair(address deriveToken,uint deadline) public returns (address[2] memory) {
+function resetPair(address deriveToken,uint deadline,address _poolAddress,uint160 volume, uint160 liquidity, uint160 fee) public returns (address[2] memory) {
     require(isPairInitiated[deriveToken] == true,"Pair not initiated");
     if(pairEndingTime[deriveToken] < block.timestamp){
 
@@ -525,8 +535,7 @@ function resetPair(address deriveToken,uint deadline) public returns (address[2]
             VolatileERC20 VHTContract = VolatileERC20(VHT);
             VolatileERC20 VLTContract = VolatileERC20(VLT);
 
-
-            (address[2] memory vixAdd)  = deploy2Currency(deriveToken,[VHTContract.name(),VLTContract.name()],[VHTContract.symbol(),VLTContract.symbol()], deadline);
+            (address[2] memory vixAdd)  = deploy2Currency(deriveToken,[VHTContract.name(),VLTContract.name()],[VHTContract.symbol(),VLTContract.symbol()],_poolAddress,fee,liquidity,volume ,deadline);
             return vixAdd;
     }else{
             revert("Pair not expired");
