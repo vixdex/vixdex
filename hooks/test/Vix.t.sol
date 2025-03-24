@@ -15,12 +15,11 @@ import {StateLibrary} from "v4-core/src/libraries/StateLibrary.sol";
 import {PoolKey} from "v4-core/src/types/PoolKey.sol";
 import {PoolSwapTest} from "v4-core/src/test/PoolSwapTest.sol";
 import {TickMath} from "v4-core/src/libraries/TickMath.sol";
-import {IUniswapV3Pool} from "@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol";
 import {Vix} from "../src/Vix.sol";
-
 contract VixTest is Test,Deployers {
     using CurrencyLibrary for Currency;
     using StateLibrary for IPoolManager;
+
     Vix hook;
     address public baseToken;
     address public deriveAsset;
@@ -37,7 +36,8 @@ contract VixTest is Test,Deployers {
                     Hooks.BEFORE_ADD_LIQUIDITY_FLAG |
                     Hooks.AFTER_ADD_LIQUIDITY_FLAG |
                     Hooks.BEFORE_SWAP_FLAG |
-                    Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
+                    Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG|
+                    Hooks.AFTER_SWAP_FLAG
             )
         );
         deployCodeTo("Vix.sol",abi.encode(manager,baseToken),hookAddress);
@@ -47,7 +47,7 @@ contract VixTest is Test,Deployers {
         uint160 volume = 75520000;
         uint160 tickLiquidity = 13401+4761696;
         uint160 fee = 0.003 * 1000;
-        (address[2] memory ivTokenAddresses) = hook.deploy2Currency(deriveAsset,["HIGH-IV-BTC","LOW-IV-BTC"],["HIVB","LIVB"],address(0),fee,tickLiquidity,volume,pairDeadline);
+        (address[2] memory ivTokenAddresses) = hook.deploy2Currency(deriveAsset,["HIGH-IV-BTC","LOW-IV-BTC"],["HIVB","LIVB"],address(0x8ad599c3A0ff1De082011EFDDc58f1908eb6e6D8),volume,pairDeadline);
         ivTokenAdd = ivTokenAddresses;
         assertEq(MockERC20(ivTokenAdd[0]).balanceOf(address(manager)), MockERC20(ivTokenAdd[0]).totalSupply());
         assertEq(MockERC20(ivTokenAdd[1]).balanceOf(address(manager)), MockERC20(ivTokenAdd[1]).totalSupply());
@@ -72,7 +72,7 @@ contract VixTest is Test,Deployers {
 
 
     function test_swapZeroForOneHighVolatileToken_ExactIn() public{
-        vm.skip(true);
+        //vm.skip(true);
        
         Currency token0;
         Currency token1;
@@ -107,7 +107,7 @@ contract VixTest is Test,Deployers {
             settings,
             hookData
         );
-          (address vixHighToken,address _vixLowToken,uint _circulation0,uint _circulation1,uint _contractHoldings0,uint _contractHoldings1,uint _reserve0,uint _reserve1) =hook.getVixData(deriveAsset);
+          (address vixHighToken,address _vixLowToken,uint _circulation0,uint _circulation1,uint _contractHoldings0,uint _contractHoldings1,uint _reserve0,uint _reserve1,address _poolAddress) =hook.getVixData(deriveAsset);
           console.log("circulation0: ",_circulation0);
           console.log("reserve0: ",_reserve0);
           console.log("contractHoldings0: ",_contractHoldings0);
@@ -297,7 +297,7 @@ contract VixTest is Test,Deployers {
     }
 
         function test_swapZeroForOneLowVolatileToken_ExactOut() public{
-            vm.skip(true);
+            //vm.skip(true);
         Currency token0;
         Currency token1;
 
@@ -354,20 +354,14 @@ contract VixTest is Test,Deployers {
     }
 
     function test_calculateIv() public{
-        uint160 volume = 75520000;
-        uint160 tickLiquidity = 13401+4761696;
-        uint160 fee = 0.003 * 1000;
-        uint160 iv = hook.calculateIv(volume,tickLiquidity,fee);
-        console.log("iv: ",iv);
-      //  (uint reserveShift,uint tokenBurn) = hook.swapReserve(iv,23861137419,1000000000000000000,1000000000000000000,1000000000000000000000,1000000000000000000000,address(0));
-       // console.log("reserve shift: ",reserveShift);
-       // console.log("token burn: ",tokenBurn);
+       (uint reserveShift,uint tokenBurn) = hook.swapReserve(20930878980,23861137419,1000000000000000000,1000000000000000000,1000000000000000000000,1000000000000000000000,address(0));
+       console.log("reserve shift: ",reserveShift);
+       console.log("token burn: ",tokenBurn);
         uint price = hook.vixTokensPrice((166670 * 1e18));
+        uint160 volume = 3590;
+        uint iv =  hook.calculateIv(0x8ad599c3A0ff1De082011EFDDc58f1908eb6e6D8, volume);
+        console.log("iv: ",iv);
         console.log("price: ",price);
-
-        IUniswapV3Pool pool = IUniswapV3Pool(0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640);
-        uint128 liq = pool.liquidity();
-        console.log("liquidity: ",liq);
     }
     
     
