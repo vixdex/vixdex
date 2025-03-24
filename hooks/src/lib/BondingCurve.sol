@@ -2,39 +2,89 @@
 pragma solidity ^0.8.13;
 import "forge-std/console.sol";  // Foundry's console library
 
+    /**
+     * @title Bonding Curve Library
+     * @dev This library provides the necessary functions to operate a bonding curve.
+     * @dev It is used to calculate the cost of purchasing/selling tokens
+     * @dev and to calculate the number of tokens that can be purchased/sold
+     * @dev for a given cost.
+     * @notice This library is used by the `vix` contract.
+     */
+
 library BondingCurve{
+
+    /**
+     * @dev This function calculates the price of a token given the bonding curve parameters.
+     * @param slope The slope of the bonding curve.
+     * @param circulation The current circulation of the token.
+     * @param basePrice The base price of the token.
+     * @return The price of the token.
+     */
     function settingPrice(uint slope, uint circulation, uint basePrice) internal pure returns (uint){
         uint price = (slope * circulation)+basePrice;
         return price;
     }
 
+    /**
+     * @dev This function calculates the cost of purchasing a specified number of tokens based on the bonding curve parameters.
+     * @param circulation The current circulation of the token.
+     * @param _purchaseToken The number of tokens to be purchased.
+     * @param slope The slope of the bonding curve.
+     * @param basePrice The base price of the token.
+     * @param fee The transaction fee applied to the purchase, represented as a fraction of 1e18.
+     * @return The total cost of purchasing the specified number of tokens, including the fee.
+     */
+
+
     function costOfPurchasingToken(uint circulation, uint _purchaseToken, uint slope, uint basePrice,uint fee) internal pure returns (uint){
         uint n0 = circulation;
         uint k = _purchaseToken;
-        uint cost = (slope * n0 * k) + ((slope * k * k) / 2) + (basePrice * k);
-        return cost * (1+fee);
+        uint256 cost = ((slope * n0 / 1e18) * k / 1e18) + ((slope * k / 1e18) * k / (2 * 1e18)) + (basePrice * k / 1e18);
+
+        // Apply fee correctly
+        cost = (cost * (1e18 - fee)) / 1e18;        
+        return cost;
     }
+    
+
+    /**
+     * @dev This function calculates the cost of selling a specified number of tokens based on the bonding curve parameters.
+     * @param circulation The current circulation of the token.
+     * @param _sellToken The number of tokens to be sold.
+     * @param slope The slope of the bonding curve.
+     * @param basePrice The base price of the token.
+     * @param fee The transaction fee applied to the sale, represented as a fraction of 1e18.
+     * @return The total revenue from selling the specified number of tokens, including the fee.
+     */
 
     function costOfSellingToken(uint circulation,uint _sellToken, uint slope, uint basePrice,uint fee) internal pure returns (uint){
         uint n0 = circulation;
         uint k = _sellToken;
-        uint cost = (slope * n0 * k) - ((slope * k * k) / 2) + (basePrice * k);
-        return cost * (1-fee);
+        //uint cost = (slope * n0 * k) - ((slope * k * k) / 2) + (basePrice * k);
+        uint256 cost = ((slope * n0 / 1e18) * k / 1e18) - ((slope * k / 1e18) * k / (2 * 1e18)) + (basePrice * k / 1e18);
+
+        // Apply fee correctly
+        cost = (cost * (1e18 - fee)) / 1e18;        
+        return cost;
     }
 
-    function tokensForGivenCost(
-        uint256 circulation,
-        uint256 cost,
-        uint256 slope,
-        uint256 fee,
-        uint256 basePrice
-    ) public pure returns (uint256) {
+    /**
+     * @dev This function calculates the number of tokens that can be purchased with a specified cost based on the bonding curve parameters.
+     * @param circulation The current circulation of the token.
+     * @param cost The cost of purchasing the tokens.
+     * @param slope The slope of the bonding curve.
+     * @param fee The transaction fee applied to the purchase, represented as a fraction of 1e18.
+     * @param basePrice The base price of the token.
+     * @return The total number of tokens that can be purchased with the specified cost, including the fee.
+     */
+
+    function tokensForGivenCost(uint256 circulation,uint256 cost,uint256 slope,uint256 fee,uint256 basePrice) internal pure returns (uint256) {
         require(cost > 0, "Cost must be greater than zero");
 
         // Adjust cost by removing fee impact
         uint256 adjustedCost = (cost * 1e18) / (1e18 + fee); // Keeps precision
         uint256 a = slope / 2;
-        uint256 b = ((slope * circulation) / 1e18) + basePrice;
+        uint256 b = (slope * (circulation / 1e18)) + basePrice;
         int256 c = -int256(adjustedCost); // Keep precision
 
         // Calculate discriminant safely
@@ -50,6 +100,13 @@ library BondingCurve{
 
         return uint256(k);
     }
+
+    /** 
+     * @notice it is babylonian square root method
+     * @param x The variance of the tick price.
+     * @return y  square root.
+     */
+
        function sqrt(uint x) internal pure returns (int y) {
         if (x == 0) return 0;
         uint z = (x + 1) / 2;

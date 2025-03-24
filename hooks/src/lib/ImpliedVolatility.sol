@@ -1,35 +1,48 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.13;
 
-library ImpliedVolatility{
+/**
+ * @title ImpliedVolatility 
+ * @notice This library provides a utility to calculate implied volatility from a given volume and tick liquidity
+ */
+pragma solidity ^0.8.26;
 
-    function dailyIV(uint fee,uint dailyVolume,uint tickLiquidity) internal pure returns (uint){
-             uint dailyVolByTickLiq = dailyVolume/tickLiquidity;
-             uint sqrtDailyVolByTickLiq = sqrt(dailyVolByTickLiq);
-             uint daily = 5*fee*sqrtDailyVolByTickLiq;
-             return daily;
-    }
-
-    function annualizedIV(uint fee,uint dailyVolume,uint tickLiquidity)public pure returns (uint){
-            uint _diailyIv = dailyIV(fee, dailyVolume, tickLiquidity);
-            uint annualized = _diailyIv*sqrt(365);
-            return annualized;
-    }
-
-
-    /** 
-     * @notice it is babylonian square root method
-     * @param x The variance of the tick price.
-     * @return y  square root.
+library ImpliedVolatility {
+    /**
+     * @notice Calculate the implied volatility from a given volume and tick liquidity
+     * @param volume The volume of the trade
+     * @param tickLiquidity The liquidity of the tick
+     * @param fee The fee of the trade
+     * @return The implied volatility (return value is scaled to 12 decimals)
      */
-    function sqrt(uint x) internal pure returns (uint) {
-    if (x == 0) return 0;
-        uint256 z = (x + 1) / 2;
-        uint256 y = x;
-        while (z < y) {
-            y = z;
-            z = (x / z + z) / 2;
+    function ivCalculation(uint160 volume, uint160 tickLiquidity,uint160 fee) 
+        internal 
+        pure 
+        returns (uint160) 
+    {
+        uint160 ratio = (volume * 1e18)/ tickLiquidity; // scaled to 18 decimals
+        uint160 sqrtRatio = sqrt(ratio); // scaled down to 9 decimals
+        
+        return (2 * fee * sqrtRatio) ; // fee is alread scaled to 3 decimals  so to bring the correct scaled down value is value/1e12
+    }
+
+    /**
+     * @notice Calculate the square root of a given number
+     * @param y The number to calculate the square root of
+     * @return z The square root of the number
+     */
+
+    function sqrt(uint160 y) internal pure returns (uint160 z) {
+        if (y > 3) {
+            z = y;
+            uint160 x = (y + 1) / 2;
+            while (x < z) {
+                z = x;
+                x = (y / x + x) / 2;
+            }
+        } else if (y != 0) {
+            z = 1;
         }
-        return y;
     }
 }
+
+// fee should scaled!. for example, 0.3% fee should be  0.003 * 1000 = 3
