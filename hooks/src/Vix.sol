@@ -51,8 +51,11 @@ import "forge-std/console.sol";  // Foundry's console library
 contract Vix is BaseHook{
 
     // events
-    event PairInitiated(address indexed _deriveToken, address indexed _vixHighToken, address indexed _vixLowToken,uint _initiatedTime ,uint256 _deadline,uint initiatedIV, bool isReset);
-    event PairExpired(address indexed deriveToken, address indexed vixHighToken, address indexed vixLowToken, uint initatedIV, uint closedIV, uint expiredTime);
+    event PairInitiated(address indexed _deriveToken, address indexed _vixHighToken, address indexed _vixLowToken,uint _initiatedTime ,uint256 _deadline,uint initiatedIV);
+    event PairExpired(address indexed deriveToken, address indexed vixHighToken, address indexed vixLowToken, uint initatedIV, uint expiredTime);
+    event HookSwap(bytes32 indexed id, address indexed sender,int128 amount0,int128 amount1,uint128 hookLPfeeAmount0,uint128 hookLPfeeAmount1);
+
+
     //libraris
     using CurrencyLibrary for Currency;
     using CurrencySettler for Currency;
@@ -157,7 +160,7 @@ function _beforeRemoveLiquidity(address, PoolKey calldata, IPoolManager.ModifyLi
  * @return uint24 Always returns 0, can be used for future extensibility.
  */
     
-function _beforeSwap(address,PoolKey calldata key,IPoolManager.SwapParams calldata params,bytes calldata data) internal override returns (bytes4, BeforeSwapDelta, uint24) {
+function _beforeSwap(address sender,PoolKey calldata key,IPoolManager.SwapParams calldata params,bytes calldata data) internal override returns (bytes4, BeforeSwapDelta, uint24) {
     BeforeSwapDelta beforeSwapDelta;
     uint256 amountInOutPositive = params.amountSpecified > 0
         ? uint256(params.amountSpecified)
@@ -184,6 +187,15 @@ function _beforeSwap(address,PoolKey calldata key,IPoolManager.SwapParams callda
             zeroIsBase
         );
         beforeSwapDelta = toBeforeSwapDelta(_deltaSpecified, _deltaUnspecified);
+        bytes32 id = keccak256(abi.encode(key)); // using keecak256 to generate bytes32 id for key
+
+        //amount1 is deltaspecified if the amountSpecified is positive, amount0 is deltaunspecified if the amountSpecified is negative 
+        if(params.amountSpecified < 0){
+            emit HookSwap(id,sender,_deltaSpecified,_deltaUnspecified,0, 0); 
+        }else{
+            emit HookSwap(id,sender,_deltaUnspecified,_deltaSpecified,0, 0); 
+
+        }
     }
     return (this.beforeSwap.selector, beforeSwapDelta, 0);
 }
@@ -472,6 +484,7 @@ function deploy2Currency(address deriveToken, string[2] memory _tokenName, strin
     uint160 initialIv = calculateIv(_poolAddress,volume);
     vixTokens[deriveToken] = VixTokenData(vixTokenAddresses[0],vixTokenAddresses[1],0,0,0,0,0,0,_poolAddress,initialIv);
     liquidateVixTokenToPm(IV_TOKEN_SUPPLY, vixTokenAddresses[0], vixTokenAddresses[1]);
+    emit PairInitiated(deriveToken,vixTokenAddresses[0],vixTokenAddresses[1],block.timestamp,block.timestamp + deadline,initialIv);
     return (vixTokenAddresses);
 }
 
@@ -564,6 +577,7 @@ function resetPair(address deriveToken,uint deadline,address _poolAddress,uint16
             VolatileERC20 VLTContract = VolatileERC20(VLT);
 
             (address[2] memory vixAdd)  = deploy2Currency(deriveToken,[VHTContract.name(),VLTContract.name()],[VHTContract.symbol(),VLTContract.symbol()],_poolAddress,volume ,deadline);
+            emit PairExpired(deriveToken,VHT,VLT,vixTokens[deriveToken].initialIv,block.timestamp);
             return vixAdd;
     }else{
             revert("Pair not expired");
