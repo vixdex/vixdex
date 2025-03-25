@@ -44,3 +44,4 @@ library CurrencySettler {
         claims ? manager.mint(recipient, currency.toId(), amount) : manager.take(currency, recipient, amount);
     }
 }
+ 
