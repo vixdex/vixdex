@@ -88,6 +88,11 @@ contract Vix is BaseHook{
         uint160 initialIv;
     }
 
+    struct HookData{
+        address deriveAsset;
+        uint160 volume;
+    }
+
     mapping(address=>VixTokenData) vixTokens;
 
     address public baseToken;
@@ -166,7 +171,8 @@ function _beforeSwap(address sender,PoolKey calldata key,IPoolManager.SwapParams
         ? uint256(params.amountSpecified)
         : uint256(-params.amountSpecified);
 
-    address _deriveAsset = abi.decode(data, (address));
+    HookData memory hookData = abi.decode(data, (HookData));
+    address _deriveAsset = hookData.deriveAsset;
     bool zeroIsBase = (Currency.unwrap(key.currency0) == baseToken);
 
     if (params.zeroForOne) {
@@ -201,19 +207,11 @@ function _beforeSwap(address sender,PoolKey calldata key,IPoolManager.SwapParams
 }
 
 function _afterSwap(address, PoolKey calldata, IPoolManager.SwapParams calldata, BalanceDelta, bytes calldata data)internal override returns (bytes4, int128){
-    address _deriveAsset = abi.decode(data, (address));
-    console.log("derive asset after swap: ",_deriveAsset);
+    HookData memory hookData = abi.decode(data, (HookData));
+    address _deriveAsset = hookData.deriveAsset;
     address _poolAddress = vixTokens[_deriveAsset].poolAddress;
     uint160 initialIv = vixTokens[_deriveAsset].initialIv;
-    uint160 iv = calculateIv(_poolAddress,3589);
-    console.log("iv: ",iv);
-    console.log("initial iv: ",initialIv);
-    console.log("reserve0: ",vixTokens[_deriveAsset].reserve0);
-    console.log("reserve1: ",vixTokens[_deriveAsset].reserve1);
-    console.log("circulation0: ",vixTokens[_deriveAsset].circulation0);
-    console.log("circulation1: ",vixTokens[_deriveAsset].circulation1);
-    console.log("contractHoldings0: ",vixTokens[_deriveAsset].contractHoldings0);
-    console.log("contractHoldings1: ",vixTokens[_deriveAsset].contractHoldings1);
+    uint160 iv = calculateIv(_poolAddress,hookData.volume);
     if(vixTokens[_deriveAsset].reserve0 >0 && vixTokens[_deriveAsset].reserve1 >0){
         (uint reserveShift,uint tokenBurn) =  swapReserve(initialIv,iv,vixTokens[_deriveAsset].reserve0,vixTokens[_deriveAsset].reserve1,vixTokens[_deriveAsset].circulation0,vixTokens[_deriveAsset].circulation1,_deriveAsset);
         console.log("reserve shift: ",reserveShift);
@@ -388,23 +386,17 @@ function processHighToken_OneZero(PoolKey calldata key,VixTokenData storage vixT
 
 function sellHighTokenExactInput(PoolKey calldata key,VixTokenData storage vixTokenData,uint256 amountInOutPositive) private returns (int128, int128) {
     uint256 baseToken_returns = vixTokenData.circulation0.costOfSellingToken(amountInOutPositive, SLOPE, BASE_PRICE, FEE);
-    console.log("baseToken returns: ",baseToken_returns);
     vixTokenData.contractHoldings0 -= amountInOutPositive;
     vixTokenData.circulation0 -= amountInOutPositive;
     vixTokenData.reserve0 -= baseToken_returns;
     key.currency0.settle(poolManager, address(this),baseToken_returns, true);
     key.currency1.take(poolManager, address(this), amountInOutPositive, true);
-
-    console.log("Returns of ETH after selling high token: ", baseToken_returns);
-
     return (int128(uint128(amountInOutPositive)), -int128(uint128(baseToken_returns)));
 }
 
 function sellHighTokenExactOutput(PoolKey calldata key,VixTokenData storage vixTokenData,uint256 amountInOutPositive) private returns (int128, int128) {
-  console.log("exact  out HT");
+
    uint tokensToSell =  vixTokenData.circulation0.tokensForGivenCost(amountInOutPositive,SLOPE,FEE,BASE_PRICE) * 1e18;
-   console.log("token to sell: ",tokensToSell);
-   console.log("amount in: ",amountInOutPositive);
    vixTokenData.circulation0 -= tokensToSell;
    vixTokenData.contractHoldings0 -= tokensToSell;
    vixTokenData.reserve0 -= amountInOutPositive;
@@ -427,23 +419,16 @@ function processLowToken_OneZero(PoolKey calldata key,VixTokenData storage vixTo
 
 function sellLowTokenExactInput(PoolKey calldata key,VixTokenData storage vixTokenData,uint256 amountInOutPositive) private returns (int128, int128) {
     uint256 baseToken_returns = vixTokenData.circulation1.costOfSellingToken(amountInOutPositive, SLOPE, BASE_PRICE, FEE);
-    console.log("baseToken returns: ",baseToken_returns);
     vixTokenData.contractHoldings1 -= amountInOutPositive;
     vixTokenData.circulation1 -= amountInOutPositive;
     vixTokenData.reserve1 -= baseToken_returns;
     key.currency0.settle(poolManager, address(this),baseToken_returns, true);
     key.currency1.take(poolManager, address(this), amountInOutPositive, true);
-
-    console.log("Returns of ETH after selling high token: ", baseToken_returns);
-
     return (int128(uint128(amountInOutPositive)), -int128(uint128(baseToken_returns)));
 }
 
 function sellLowTokenExactOutput(PoolKey calldata key,VixTokenData storage vixTokenData,uint256 amountInOutPositive) private returns (int128, int128) {
-  console.log("exact  out HT");
    uint tokensToSell =  vixTokenData.circulation1.tokensForGivenCost(amountInOutPositive,SLOPE,FEE,BASE_PRICE) * 1e18;
-   console.log("token to sell: ",tokensToSell);
-   console.log("amount in: ",amountInOutPositive);
    vixTokenData.circulation1 -= tokensToSell;
    vixTokenData.contractHoldings1 -= tokensToSell;
    vixTokenData.reserve1 -= amountInOutPositive;
@@ -465,9 +450,6 @@ function sellLowTokenExactOutput(PoolKey calldata key,VixTokenData storage vixTo
  */
 
 function deploy2Currency(address deriveToken, string[2] memory _tokenName, string[2] memory _tokenSymbol,address _poolAddress,uint160 volume,uint deadline) public returns(address[2] memory){
-    console.log("isPairInitiated: ",isPairInitiated[deriveToken]);
-    console.log("pairEndingTime: ",pairEndingTime[deriveToken]);
-    console.log("deadline: ",block.timestamp);
     require((isPairInitiated[deriveToken] == false || pairEndingTime[deriveToken] < block.timestamp),"Pair still active");
     isPairInitiated[deriveToken] = true;
     pairInitiatedTime[deriveToken] = block.timestamp;
@@ -522,7 +504,6 @@ function liquidateVixTokenToPm(uint256 amountEach, address currency0, address cu
 
 function unlockCallback(bytes calldata data) external onlyPoolManager returns (bytes memory) {
     CallbackData memory callbackData = abi.decode(data, (CallbackData));
-	console.log("callbackData: ",callbackData.amountEach);
 	callbackData.currency0.settle(
             poolManager,
             callbackData.sender,
@@ -612,6 +593,7 @@ function calculateIv(address _poolAddress,uint160 volume) public view returns (u
     uint160 tickLiquidity = uint160(liq/1e18);
     uint160 scaledDownFee = uint160(fee/1000);
     uint160 iv =  volume.ivCalculation(tickLiquidity,scaledDownFee);
+    console.log("iv: ",iv);
     return iv;
 }
 

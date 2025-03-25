@@ -5,6 +5,7 @@
  * @notice This library provides a utility to calculate implied volatility from a given volume and tick liquidity
  */
 pragma solidity ^0.8.26;
+import "forge-std/console.sol";
 
 library ImpliedVolatility {
     /**
@@ -19,6 +20,8 @@ library ImpliedVolatility {
         pure 
         returns (uint160) 
     {
+        console.log("volume:", volume);
+        console.log("tickLiquidity:", tickLiquidity);
         uint160 ratio = (volume * 1e18)/ tickLiquidity; // scaled to 18 decimals
         uint160 sqrtRatio = sqrt(ratio); // scaled down to 9 decimals
         
