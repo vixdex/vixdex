@@ -217,7 +217,7 @@ interface IPoolManager is IProtocolFees, IERC6909Claims, IExtsload, IExttload {
     /// @param amount The amount of currency to mint
     /// @dev The id is converted to a uint160 to correspond to a currency address
     /// If the upper 12 bytes are not 0, they will be 0-ed out
-    function mint(address to, uint256 id, uint256 amount) external;
+    function mint(address to, uint256 id, uint256 amount) external; 
 
     /// @notice Called by the user to move value from ERC6909 balance
     /// @param from The address to burn the tokens from

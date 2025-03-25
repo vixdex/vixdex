@@ -36,7 +36,7 @@ contract VixTest is Test,Deployers {
                     Hooks.BEFORE_ADD_LIQUIDITY_FLAG |
                     Hooks.AFTER_ADD_LIQUIDITY_FLAG |
                     Hooks.BEFORE_SWAP_FLAG |
-                    Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG|
+                    Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG |
                     Hooks.AFTER_SWAP_FLAG
             )
         );
@@ -51,7 +51,8 @@ contract VixTest is Test,Deployers {
         ivTokenAdd = ivTokenAddresses;
         assertEq(MockERC20(ivTokenAdd[0]).balanceOf(address(manager)), MockERC20(ivTokenAdd[0]).totalSupply());
         assertEq(MockERC20(ivTokenAdd[1]).balanceOf(address(manager)), MockERC20(ivTokenAdd[1]).totalSupply());
-
+        console.log("vix token 0 address",ivTokenAdd[0]);
+        console.log("vix token 1 address",ivTokenAdd[1]);
     uint token0ClaimID = CurrencyLibrary.toId(Currency.wrap(ivTokenAdd[0]));
     uint token1ClaimID = CurrencyLibrary.toId(Currency.wrap(ivTokenAdd[1]));
 
@@ -66,6 +67,7 @@ contract VixTest is Test,Deployers {
 
     console.log("token0 claims balance: ",token0ClaimsBalance);
     console.log("token1 claims balance: ",token1ClaimsBalance);
+    console.log("hook address: ",address(hook));
 
     }
 
