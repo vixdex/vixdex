@@ -2,7 +2,7 @@
 pragma solidity ^0.8.21;
 
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
-
+ 
 /// @title HookMiner
 /// @notice a minimal library for mining hook addresses
 library HookMiner {
