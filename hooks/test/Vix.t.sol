@@ -24,7 +24,7 @@ contract VixTest is Test,Deployers {
     address public baseToken;
     address public deriveAsset;
     address[2] ivTokenAdd;
-    uint160 _volume = 724;
+    uint160 _volume = 898;
     struct HookData{
         address deriveAsset;
         uint160 volume;

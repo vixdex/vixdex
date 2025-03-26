@@ -589,10 +589,9 @@ function calculateIv(address _poolAddress,uint160 volume) public view returns (u
     uint24 fee = pool.fee();
     uint8 decimal0 = MockERC20(token0).decimals();
     uint8 decimal1 = MockERC20(token1).decimals();
-    (uint amount0, uint amount1,uint scaledAdjustedPrice,uint inversePrice,uint liq,uint p1,uint p2) = liquidity.tickLiquidity(tick,tickSpacing,decimal0,decimal1,false);
-    uint160 tickLiquidity = uint160(liq/1e18);
+    (uint liq,uint160 scaleFactor) = liquidity.tickLiquidity(tick,tickSpacing,false);
     uint160 scaledDownFee = uint160(fee/1000);
-    uint160 iv =  volume.ivCalculation(tickLiquidity,scaledDownFee);
+    uint160 iv =  volume.ivCalculation(uint160(liq),scaleFactor,scaledDownFee);
     console.log("iv: ",iv);
     return iv;
 }
