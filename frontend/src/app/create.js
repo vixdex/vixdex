@@ -1,6 +1,6 @@
 const { ethers } = require('ethers');
 
-async function deployCurrency() {
+async function deployCurrency(deriveToken, poolAddress) {
   // ABI including both functions
 
   const abi = [
@@ -20,13 +20,13 @@ async function deployCurrency() {
 
   const contract = new ethers.Contract(contractAddress, abi, signer);
 
-  const deriveToken = '0x514910771AF9Ca656af840dff83E8264EcF986CA'; // WBTC
+  // const deriveToken = '0x514910771AF9Ca656af840dff83E8264EcF986CA'; // WBTC
 
   const tokenNames = ['TokenA', 'TokenB'];
 
   const tokenSymbols = ['TKA', 'TKB'];
 
-  const poolAddress = '0xa6Cc3C2531FdaA6Ae1A3CA84c2855806728693e8';
+  // const poolAddress = '0xa6Cc3C2531FdaA6Ae1A3CA84c2855806728693e8';
 
   const volume = ethers.parseEther('722'); // Assuming correct format
 
@@ -127,3 +127,5 @@ deployCurrency()
   .then((data) => console.log('Returned Vix Data:', data))
 
   .catch((err) => console.error('Deployment failed:', err));
+
+module.exports = { deployCurrency };

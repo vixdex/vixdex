@@ -1,123 +1,54 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import Head from 'next/head';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ethers } from 'ethers';
-
-const abi = [
-  'function name() view returns (string)',
-  'function vixTokensPrice(uint circulation) pure returns(uint)',
-  'function deploy2Currency(address deriveToken, string[2] memory _tokenName, string[2] memory _tokenSymbol, address _poolAddress, uint160 volume, uint deadline) returns(address[2] memory)',
-];
+import { deployCurrency } from '../create';
+import { initializePool } from '../v4';
 
 export default function CreateVolatilityPair() {
   const [asset, setAsset] = useState('');
   const [poolAddress, setPoolAddress] = useState('');
-  const [timePeriod, setTimePeriod] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState('');
-  const [contract, setContract] = useState(null);
-  const [provider, setProvider] = useState(null);
-  const [isInitialized, setIsInitialized] = useState(false);
-
-  // Initialize provider and contract
-  useEffect(() => {
-    const init = async () => {
-      try {
-        const newProvider = new ethers.JsonRpcProvider('http://127.0.0.1:8545');
-        const signer = await newProvider.getSigner(0);
-        const contractAddress = '0xF6a4c2dE753cc1a128C1e7A44608Ff57AC8dCcC8';
-        const newContract = new ethers.Contract(contractAddress, abi, signer);
-
-        setProvider(newProvider);
-        setContract(newContract);
-        setIsInitialized(true); // Mark as initialized only after successful setup
-      } catch (error) {
-        console.error('Failed to initialize contract:', error);
-        setMessage(
-          'Failed to connect to blockchain network. Please check your local node.'
-        );
-        setIsInitialized(false);
-      }
-    };
-    init();
-  }, []);
-
-  const deriveToken = asset;
-  const tokenNames = ['TokenA', 'TokenB'];
-  const tokenSymbols = ['TKA', 'TKB'];
-  const poolAddr = poolAddress;
-  const volume = ethers.parseEther('1000');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsLoading(true);
     setMessage('');
 
-    if (!isInitialized || !contract || !provider) {
-      setMessage('Contract not initialized. Please wait or refresh the page.');
-      setIsLoading(false);
-      return;
-    }
-
     try {
-      // Verify contract exists
-      const code = await provider.getCode(contract.address);
-      if (code === '0x') {
-        throw new Error('No contract deployed at the given address.');
+      // Step 1: Deploy the currency pair and get Vix data
+      const vixData = await deployCurrency(asset, poolAddress);
+      if (!vixData) {
+        throw new Error('No VIX data returned after deployment');
       }
 
-      // Get current timestamp
-      const block = await provider.getBlock('latest');
-      const currentTimestamp = block.timestamp;
-      const deadline = currentTimestamp + 3600 * 24;
-
-      // Send transaction
-      console.log('Deploying currency pair...');
-      const tx = await contract.deploy2Currency(
-        deriveToken,
-        tokenNames,
-        tokenSymbols,
-        poolAddress,
-        volume,
-        deadline,
-        { gasLimit: 50000000 }
-      );
-      console.log('Transaction hash:', tx.hash);
-      console.log(
-        deriveToken,
-        tokenNames,
-        tokenSymbols,
-        poolAddress,
-        volume,
-        deadline
+      setMessage(
+        `Pair deployed! High Token: ${vixData.vixHighToken}, Low Token: ${vixData.vixLowToken}`
       );
 
-      // Wait for confirmation
-      const receipt = await tx.wait();
-      console.log('Transaction confirmed in block:', receipt.blockNumber);
+      // Step 2: Initialize pools for high and low VIX tokens
+      setMessage((prev) => `${prev}\nInitializing High VIX pool...`);
+      await initializePool(vixData.vixHighToken);
+      setMessage((prev) => `${prev}\nHigh VIX pool initialized!`);
 
-      setTimeout(() => {
-        setIsLoading(false);
-        setMessage(
-          `New pair ${deriveToken.slice(0, 3).toUpperCase()}-HV${
-            timePeriod === '1 day' ? '1D' : '7D'
-          } created successfully and is now available for trading.`
-        );
-        setAsset('');
-        setPoolAddress('');
-        setTimePeriod('');
-      }, 2000);
+      setMessage((prev) => `${prev}\nInitializing Low VIX pool...`);
+      await initializePool(vixData.vixLowToken);
+      setMessage(
+        (prev) =>
+          `${prev}\nLow VIX pool initialized!\nAll operations completed successfully!`
+      );
     } catch (error) {
-      console.error('Error deploying currency:', error.message);
-      if (error.reason) console.error('Revert reason:', error.reason);
       setMessage(`Error: ${error.message}`);
-      setIsLoading(false);
     }
+
+    setIsLoading(false);
+    setAsset('');
+    setPoolAddress('');
   };
 
   return (
-    <div className="min-h-screen bg-[#121418] text-[#F7EFDE] font-sans">
+    <div className="min-h-screen bg-[#121418] text-[#F7EFDE] font-sans overflow-hidden relative">
       <Head>
         <title>Create New Volatility Pair</title>
         <meta
@@ -126,100 +57,99 @@ export default function CreateVolatilityPair() {
         />
       </Head>
 
-      <main className="container mx-auto px-4 py-8 md:p-16">
+      <main className="max-w-2xl mx-auto p-10 sm:p-16 relative z-10">
         <motion.form
           onSubmit={handleSubmit}
-          className="max-w-lg mx-auto bg-[#1a1e22] p-6 rounded-lg border border-[#503A39] space-y-6"
+          className="space-y-8 bg-[#1a1e22] p-8 rounded-xl border border-[#503A39]"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
         >
-          <div className="space-y-4">
-            <motion.div
-              initial={{ x: -20, opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              transition={{ duration: 0.5, delay: 0.1 }}
-            >
-              <label className="block text-sm font-medium text-[#E2C19B] mb-1">
-                Asset Name
-              </label>
-              <input
-                type="text"
-                value={asset}
-                onChange={(e) => setAsset(e.target.value)}
-                placeholder="e.g., Bitcoin"
-                className="w-full px-3 py-2 bg-[#121418] border border-[#503A39] rounded-md text-[#F7EFDE] focus:outline-none focus:border-[#3EAFA4] transition-colors"
-                required
-              />
-            </motion.div>
+          {/* Asset Name */}
+          <motion.div
+            initial={{ x: -50, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            transition={{ duration: 0.5, delay: 0.1 }}
+            className="relative"
+          >
+            <label className="block text-sm mb-2 text-[#E2C19B]">
+              Derived Asset
+            </label>
+            <input
+              type="text"
+              value={asset}
+              onChange={(e) => setAsset(e.target.value)}
+              placeholder="e.g., 0x1234...5678"
+              className="w-full p-4 bg-[#121418] border border-[#503A39] rounded-lg text-[#F7EFDE] focus:outline-none focus:border-[#3EAFA4] transition-colors duration-300"
+              required
+            />
+          </motion.div>
 
-            <motion.div
-              initial={{ x: -20, opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              transition={{ duration: 0.5, delay: 0.2 }}
-            >
-              <label className="block text-sm font-medium text-[#E2C19B] mb-1">
-                Pool Address
-              </label>
-              <input
-                type="text"
-                value={poolAddress}
-                onChange={(e) => setPoolAddress(e.target.value)}
-                placeholder="e.g., 0x1234...5678"
-                className="w-full px-3 py-2 bg-[#121418] border border-[#503A39] rounded-md text-[#F7EFDE] focus:outline-none focus:border-[#3EAFA4] transition-colors"
-                required
-              />
-            </motion.div>
-          </div>
+          {/* Pool Address */}
+          <motion.div
+            initial={{ x: -50, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            transition={{ duration: 0.5, delay: 0.2 }}
+          >
+            <label className="block text-sm mb-2 text-[#E2C19B]">
+              Pool Address
+            </label>
+            <input
+              type="text"
+              value={poolAddress}
+              onChange={(e) => setPoolAddress(e.target.value)}
+              placeholder="e.g., 0x1234...5678"
+              className="w-full p-4 bg-[#121418] border border-[#503A39] rounded-lg text-[#F7EFDE] focus:outline-none focus:border-[#3EAFA4] transition-colors duration-300"
+              required
+            />
+          </motion.div>
 
+          {/* Review Section */}
           <AnimatePresence>
             {asset && poolAddress && (
               <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                transition={{ duration: 0.3 }}
-                className="bg-[#121418] p-4 rounded-md border border-[#503A39]"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 20 }}
+                transition={{ duration: 0.5 }}
+                className="p-6 bg-[#121418] rounded-lg border border-[#503A39]"
               >
-                <h2 className="text-md font-medium text-[#E2C19B] mb-2">
-                  Pair Preview
+                <h2 className="text-lg font-semibold text-[#E2C19B] mb-3">
+                  Review Your Pair
                 </h2>
-                <div className="space-y-1 text-sm">
-                  <p>
-                    Asset: <span className="text-[#F7EFDE]">{asset}</span>
-                  </p>
-                  <p>
-                    Pool:{' '}
-                    <span className="text-[#F7EFDE]">
-                      {poolAddress.slice(0, 6)}...{poolAddress.slice(-4)}
-                    </span>
-                  </p>
-                </div>
+                <p>
+                  Asset: <span className="text-[#F7EFDE]">{asset}</span>
+                </p>
+                <p>
+                  Pool Address:{' '}
+                  <span className="text-[#F7EFDE]">
+                    {poolAddress.slice(0, 6)}...{poolAddress.slice(-4)}
+                  </span>
+                </p>
               </motion.div>
             )}
           </AnimatePresence>
 
+          {/* Submit Button */}
           <motion.button
             type="submit"
-            disabled={isLoading || !asset || !poolAddress || !isInitialized}
-            className={`w-full py-2 bg-[#3EAFA4] text-[#F7EFDE] rounded-md font-medium transition-all ${
-              isLoading || !isInitialized
-                ? 'opacity-60 cursor-not-allowed'
-                : 'hover:bg-[#E2C19B] hover:shadow-md'
+            disabled={isLoading || !asset || !poolAddress}
+            className={`w-full py-3 bg-[#3EAFA4] text-[#F7EFDE] rounded-lg font-semibold transition-colors duration-300 ${
+              isLoading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#E2C19B]'
             }`}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
             transition={{ duration: 0.2 }}
           >
             {isLoading ? (
               <motion.span
-                className="flex items-center justify-center gap-2"
+                className="flex items-center justify-center"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.2 }}
               >
                 <motion.svg
-                  className="w-4 h-4"
+                  className="h-5 w-5 mr-2"
                   animate={{ rotate: 360 }}
                   transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
                   viewBox="0 0 24 24"
@@ -231,27 +161,26 @@ export default function CreateVolatilityPair() {
                     stroke="#E2C19B"
                     strokeWidth="4"
                     fill="none"
-                    opacity="0.3"
+                    opacity="0.25"
                   />
                   <path fill="#E2C19B" d="M4 12a8 8 0 018-8v8H4z" />
                 </motion.svg>
-                Processing...
+                Creating...
               </motion.span>
-            ) : !isInitialized ? (
-              'Initializing...'
             ) : (
               'Create Pair'
             )}
           </motion.button>
 
+          {/* Feedback Message */}
           <AnimatePresence>
             {message && (
               <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 10 }}
-                transition={{ duration: 0.3 }}
-                className="p-3 rounded-md bg-[#1a1e22] border border-[#3EAFA4] text-sm text-[#F7EFDE]"
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                transition={{ duration: 0.5 }}
+                className="p-4 rounded-lg bg-[#1a1e22] text-[#F7EFDE] border border-[#3EAFA4]"
               >
                 {message}
               </motion.div>

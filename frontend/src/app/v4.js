@@ -25,15 +25,12 @@ const POOL_MANAGER_ABI = [
 ];
 
 // Constants
-const VIX_HIGH_TOKEN = '0x037010d7F84447D9f7D666481a9fd1961d7144D9';
-const VIX_LOW_TOKEN = '0xA93425f2728467eC8b87f10d0dCf5DcE9E407DED';
 const ETH_ADDRESS = '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2';
 const POOL_MANAGER_ADDRESS = '0x000000000004444c5dc75cB358380D2e3dE08A90'; // Verify this!
 const FEE = 3000; // 0.3%
 const TICK_SPACING = 60;
 const HOOKS = '0x16978904Dad6fD20093D0454Ab4420B3adcFcCc8';
 const SQRT_PRICE_X96 = BigInt('792281625142643375935439503360');
-// 1 ETH = 100 VIX
 
 // Provider and Wallet
 const provider = new ethers.JsonRpcProvider('http://127.0.0.1:8545');
@@ -66,55 +63,22 @@ async function initializePool(tokenAddress) {
       hooks: HOOKS,
     };
 
-    console.log('poolkey', poolKey);
-    console.log('⏳ Estimating gas for transaction...');
     const estimatedGas = await poolManager.initialize.estimateGas(
       poolKey,
       SQRT_PRICE_X96
     );
 
-    console.log(`📏 Estimated Gas: ${estimatedGas.toString()}`);
-    console.log('🚀 Sending transaction...');
     const tx = await poolManager.initialize(poolKey, SQRT_PRICE_X96, {
       gasLimit: estimatedGas * 2n,
     });
 
-    console.log(`🔄 Transaction sent: ${tx.hash}`);
     const receipt = await tx.wait();
-    console.log(`✅ Transaction confirmed! Hash: ${receipt.transactionHash}`);
-    console.log(`📜 Pool ${poolName} initialized successfully!\n`);
+    console.log(`✅ Pool ${poolName} initialized: ${receipt.transactionHash}`);
+    return { success: true, txHash: receipt.transactionHash };
   } catch (error) {
-    console.error('❌ Transaction failed:', error);
-    if (error.data) {
-      console.log('🔍 Revert data:', error.data);
-      if (error.data === '0x7983c051') {
-        console.log('⚠️ Pool already initialized');
-      } else if (error.data.startsWith('0x6e6c9830')) {
-        console.log('⚠️ Invalid pool parameters or token addresses');
-      }
-    }
+    console.error('❌ Pool initialization failed:', error);
+    throw error;
   }
 }
 
-async function main() {
-  try {
-    console.log('\n🔄 Starting Pool Initialization Process...\n');
-    const network = await provider.getNetwork();
-    console.log(
-      `🌐 Connected to network: ${network.name} (chainId: ${network.chainId})`
-    );
-
-    // Verify wallet balance
-    const balance = await provider.getBalance(wallet.address);
-    console.log(`💰 Wallet balance: ${ethers.formatEther(balance)} ETH`);
-
-    await initializePool(VIX_HIGH_TOKEN);
-    await initializePool(VIX_LOW_TOKEN);
-
-    console.log('\n✅ All pools processed successfully!\n');
-  } catch (error) {
-    console.error('❌ Error initializing pools:', error);
-  }
-}
-
-main();
+module.exports = { initializePool };
