@@ -19,7 +19,7 @@ const UNIVERSAL_ROUTER_ABI = [
 
 // Constants
 const UNIVERSAL_ROUTER_ADDRESS = '0x66a9893cc07d91d95644aedd05d03f95e1dba8af'; // Update with actual router address
-const VIX_HIGH_TOKEN = '0x84200F6630cd483F10c998643Fe2bd6d96B071c3';
+const VIX_HIGH_TOKEN = '0x037010d7F84447D9f7D666481a9fd1961d7144D9';
 const ETH_ADDRESS = '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2';
 const SWAP_AMOUNT_ETH = ethers.parseEther('10'); // 10 ETH
 const DEADLINE = Math.floor(Date.now() / 1000) + 60 * 10; // 10 min deadline
