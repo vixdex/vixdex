@@ -83,6 +83,7 @@ contract VixTest is Test,Deployers {
 
         (token0,token1) = SortTokens.sort(MockERC20(baseToken),MockERC20(ivTokenAdd[0]));
         //initializing Pool for base token & high IV token
+
         (key, ) = initPool(
             token0,
             token1, //high IV token
@@ -90,7 +91,7 @@ contract VixTest is Test,Deployers {
             3000,
             SQRT_PRICE_1_1
         );
-
+     
         //swap
         PoolSwapTest.TestSettings memory settings = PoolSwapTest.TestSettings({
         takeClaims: false,
