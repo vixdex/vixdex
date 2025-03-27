@@ -39,7 +39,6 @@ contract VixTest is Test,Deployers {
         address hookAddress = address(
             uint160(
                     Hooks.BEFORE_ADD_LIQUIDITY_FLAG |
-                    Hooks.AFTER_ADD_LIQUIDITY_FLAG |
                     Hooks.BEFORE_SWAP_FLAG |
                     Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG |
                     Hooks.AFTER_SWAP_FLAG
@@ -48,7 +47,7 @@ contract VixTest is Test,Deployers {
         deployCodeTo("Vix.sol",abi.encode(manager,baseToken),hookAddress);
 
         hook = Vix(hookAddress);
-        uint256 pairDeadline = block.timestamp + (3600*24);
+        uint256 pairDeadline =(3600*24);
 
         uint160 tickLiquidity = 13401+4761696;
         uint160 fee = 0.003 * 1000;
@@ -135,21 +134,6 @@ contract VixTest is Test,Deployers {
         );
 
         console.log("balanceOf high vix after sold:",MockERC20(ivTokenAdd[0]).balanceOf(address(this)));
-
-        // //expect reseting pair after deadline
-        
-        // (address[2] memory vixAdd2) = hook.resetPair(token0,token1,deadline);
-        // address vixToken1Reset = vixAdd2[0];
-        // address vixToken2Reset = vixAdd2[1];
-        // MockERC20 vixToken1ResetContract = MockERC20(vixToken1Reset);
-        // MockERC20 vixToken2ResetContract = MockERC20(vixToken2Reset);
-
-        // //
-
-
-        // //expect transfering token after deadline
-        // hook.transferVixtoken(address(this), 250 * (10**18),vixToken1Reset);
-        // assertEq(vixToken1ResetContract.balanceOf(address(this)), 250 * (10**18));
 
 
     }
@@ -438,16 +422,17 @@ function test_PriceChangesInVolatility() external {
 }
 
 
-    // function test_resetPair() external{
-    //     //expect revert when trying to reset pair before deadline
-    //     uint deadline = 3600 * 24;
-    //     vm.expectRevert();
-    //     hook.resetPair(token0,token1,deadline);
-    //     //expect revert when transfering token after deadline
-    //     vm.warp(block.timestamp + 25 hours);
-    //     vm.expectRevert("TOKEN EXPIRED, MINTING CLOSED");
-    //     hook.transferVixtoken(address(this), 250 * (10**18),vixTokens[0]);
-    // }
+    function test_resetPair() external{
+        //expect revert when trying to reset pair before deadline
+        uint deadline = 3600 * 24;
+        console.log("block timestamp: ",block.timestamp);
+        vm.expectRevert();
+        hook.resetPair(deriveAsset, deadline,0xCBCdF9626bC03E24f779434178A73a0B4bad62eD,_volume);
+        //expect revert when transfering token after deadline
+        vm.warp(block.timestamp + 30 hours);
+        console.log("block timestamp: ",block.timestamp);
+        hook.resetPair(deriveAsset, deadline,0xCBCdF9626bC03E24f779434178A73a0B4bad62eD,_volume); 
+    }
     
     
 

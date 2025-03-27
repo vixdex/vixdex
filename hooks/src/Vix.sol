@@ -118,7 +118,7 @@ function getHookPermissions() public pure override returns (Hooks.Permissions me
                 afterInitialize: false,
                 beforeAddLiquidity: true,
                 beforeRemoveLiquidity: false,
-                afterAddLiquidity: true,
+                afterAddLiquidity: false,
                 afterRemoveLiquidity: false,
                 beforeSwap: true,
                 afterSwap: true,
@@ -174,7 +174,7 @@ function _beforeSwap(address sender,PoolKey calldata key,IPoolManager.SwapParams
     HookData memory hookData = abi.decode(data, (HookData));
     address _deriveAsset = hookData.deriveAsset;
     bool zeroIsBase = (Currency.unwrap(key.currency0) == baseToken);
-
+    require(pairEndingTime[_deriveAsset] > block.timestamp,"Pair expired!, reset it");
     if (params.zeroForOne) {
         (int128 _deltaSpecified, int128 _deltaUnspecified) = zeroForOneOperator(
             key,
@@ -548,7 +548,7 @@ function mintVixToken(address to,address _token,uint _amount) internal returns (
  * @return address[2] memory Returns the addresses of the newly deployed currency tokens.
  */
 
-function resetPair(address deriveToken,uint deadline,address _poolAddress,uint160 volume, uint160 liquidity, uint160 fee) public returns (address[2] memory) {
+function resetPair(address deriveToken,uint deadline,address _poolAddress,uint160 volume) public returns (address[2] memory) {
     require(isPairInitiated[deriveToken] == true,"Pair not initiated");
     if(pairEndingTime[deriveToken] < block.timestamp){
 
