@@ -1,4 +1,5 @@
 const { ethers } = require('ethers');
+require('dotenv').config();
 
 // PoolManager ABI
 const POOL_MANAGER_ABI = [
@@ -29,15 +30,12 @@ const ETH_ADDRESS = '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2';
 const POOL_MANAGER_ADDRESS = '0x000000000004444c5dc75cB358380D2e3dE08A90'; // Verify this!
 const FEE = 3000; // 0.3%
 const TICK_SPACING = 60;
-const HOOKS = '0x16978904Dad6fD20093D0454Ab4420B3adcFcCc8';
+const HOOKS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS;
 const SQRT_PRICE_X96 = BigInt('792281625142643375935439503360');
 
 // Provider and Wallet
-const provider = new ethers.JsonRpcProvider('http://127.0.0.1:8545');
-const wallet = new ethers.Wallet(
-  '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80',
-  provider
-);
+const provider = new ethers.JsonRpcProvider(process.env.NEXT_PUBLIC_RPC_URL);
+const wallet = new ethers.Wallet(process.env.NEXT_PUBLIC_PRIVATE_KEY, provider);
 
 // PoolManager Contract
 const poolManager = new ethers.Contract(
