@@ -74,7 +74,7 @@ contract Vix is BaseHook{
     uint constant public FEE = 10000; //1% || 0.01
     uint constant public BASE_PRICE = 0.0000060 * 1e18;
     uint constant public IV_TOKEN_SUPPLY = 250 * 1000000 * (10**18);
-    uint constant public RESERVE_SHIFT_SLOPE = 0.03 * 1e18; //3% || according to reserve shift math
+    uint constant public RESERVE_SHIFT_SLOPE = 3 * 1e16; //3% and equal to 0.03 * 1e18 || according to reserve shift math
     struct VixTokenData {
         address vixHighToken;
         address vixLowToken;
@@ -118,7 +118,7 @@ function getHookPermissions() public pure override returns (Hooks.Permissions me
                 afterInitialize: false,
                 beforeAddLiquidity: true,
                 beforeRemoveLiquidity: false,
-                afterAddLiquidity: true,
+                afterAddLiquidity: false,
                 afterRemoveLiquidity: false,
                 beforeSwap: true,
                 afterSwap: true,
@@ -174,7 +174,7 @@ function _beforeSwap(address sender,PoolKey calldata key,IPoolManager.SwapParams
     HookData memory hookData = abi.decode(data, (HookData));
     address _deriveAsset = hookData.deriveAsset;
     bool zeroIsBase = (Currency.unwrap(key.currency0) == baseToken);
-
+    require(pairEndingTime[_deriveAsset] > block.timestamp,"Pair expired!, reset it");
     if (params.zeroForOne) {
         (int128 _deltaSpecified, int128 _deltaUnspecified) = zeroForOneOperator(
             key,
@@ -548,7 +548,7 @@ function mintVixToken(address to,address _token,uint _amount) internal returns (
  * @return address[2] memory Returns the addresses of the newly deployed currency tokens.
  */
 
-function resetPair(address deriveToken,uint deadline,address _poolAddress,uint160 volume, uint160 liquidity, uint160 fee) public returns (address[2] memory) {
+function resetPair(address deriveToken,uint deadline,address _poolAddress,uint160 volume) public returns (address[2] memory) {
     require(isPairInitiated[deriveToken] == true,"Pair not initiated");
     if(pairEndingTime[deriveToken] < block.timestamp){
 
@@ -598,7 +598,7 @@ function calculateIv(address _poolAddress,uint160 volume) public view returns (u
 
 
 function swapReserve(uint initialIv, uint currentIv, uint reserve0, uint reserve1,uint circulation0,uint circulation1,address deriveAsset) public  returns(uint,uint){
-    if(initialIv > currentIv && reserve0 > reserve1){
+    if(initialIv > currentIv && reserve0 > 1 ether){
         /* 
         1. swap certain amount of reserve0 (high token Reserve) to reserve1 (low token Reserve) 
         2. burn contract holding 0 (high token) and mint contract holding 1 (low token)
@@ -606,10 +606,10 @@ function swapReserve(uint initialIv, uint currentIv, uint reserve0, uint reserve
         4. price of low token will increase due to mint of contract holding 1
         4. for smooth sell and buy, we swapped reserve
         */
-        uint reserveShift = (RESERVE_SHIFT_SLOPE * (initialIv - currentIv) * (reserve0)) / 1e18;
+        uint reserveShift = (RESERVE_SHIFT_SLOPE * reserve0) / 1e18;
         require(reserveShift > 0,"reserve shift should be greater than 0");
-        uint tokenBurn = (reserveShift * circulation0) / reserve0;
-        uint tokenMint = (reserveShift * circulation1) / reserve1;
+        uint tokenBurn = (reserveShift * circulation0) / (reserve0+1);
+        uint tokenMint = (reserveShift * circulation1) / (reserve1+1);
 
 
         vixTokens[deriveAsset].reserve0 -= reserveShift;
@@ -619,7 +619,7 @@ function swapReserve(uint initialIv, uint currentIv, uint reserve0, uint reserve
         return (reserveShift,tokenBurn);
 
 
-    }else if(initialIv < currentIv && reserve1 > reserve0){
+    }else if(initialIv < currentIv && reserve1 >  1 ether){
         /* 
         1. swap certain amount of reserve1 (low token Reserve) to reserve0 (high token Reserve) 
         2. burn contract holding 1 (low token) and mint contract holding 0 (high token)
@@ -628,11 +628,10 @@ function swapReserve(uint initialIv, uint currentIv, uint reserve0, uint reserve
         4. for smooth sell and buy, we swapped reserve
         */
 
-        uint reserveShift = (RESERVE_SHIFT_SLOPE * (currentIv - initialIv) * (reserve1)) / 1e18;
+        uint reserveShift = (RESERVE_SHIFT_SLOPE * reserve1) / 1e18;
         require(reserveShift > 0,"reserve shift should be greater than 0");
-        uint tokenBurn = (reserveShift * circulation1) / reserve1;
-        uint tokenMint = (reserveShift * circulation0) / reserve0;
-
+        uint tokenBurn = (reserveShift * circulation1) / (reserve1+1);
+        uint tokenMint = (reserveShift * circulation0) / (reserve0+1);
         vixTokens[deriveAsset].reserve0 += reserveShift;
         vixTokens[deriveAsset].reserve1 -= reserveShift;
         vixTokens[deriveAsset].contractHoldings1 -= tokenBurn;
@@ -644,8 +643,8 @@ function swapReserve(uint initialIv, uint currentIv, uint reserve0, uint reserve
      
 }
 
-function vixTokensPrice(uint circulation) public pure returns(uint){
-    uint price = ((SLOPE * circulation) / 1e18) + BASE_PRICE;
+function vixTokensPrice(uint contractHoldings) public pure returns(uint){
+    uint price = ((SLOPE * contractHoldings) / 1e18) + BASE_PRICE;
     return (price); // we should do price/1e18 for readable price
     
 }

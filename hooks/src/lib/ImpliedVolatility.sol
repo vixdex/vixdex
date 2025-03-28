@@ -19,13 +19,7 @@ library ImpliedVolatility {
         internal 
         pure 
         returns (uint160) 
-    {
-        console.log("volume:", volume);
-        console.log("tickLiquidity:", tickLiquidity);
-        console.log("scaleDown liquidity: ",(tickLiquidity/(10**scaleFactor)));
-        console.log("scaleDown: ",scaleFactor);
-        uint160 ratio = (volume * 1e18)/ (tickLiquidity/(uint160(10)**scaleFactor)); // scaled to 18 decimals
-        console.log("ratio:", ratio);
+    {        uint160 ratio = (volume * 1e18)/ (tickLiquidity/(uint160(10)**scaleFactor)); // scaled to 18 decimals
         uint160 sqrtRatio = sqrt(ratio); // scaled down to 9 decimals
         
         return (2 * fee * sqrtRatio) ; // fee is alread scaled to 3 decimals  so to bring the correct scaled down value is value/1e12

@@ -41,7 +41,6 @@ library LiquidityConversion {
 
         }
         uint numerator = liq * (pb-pa);
-        console.log("numerator: ",numerator);
         uint result = numerator/Q96;
         return result;
     }
@@ -58,13 +57,9 @@ library LiquidityConversion {
             uint160 sa = bottomTick.getSqrtRatioAtTick();
             uint160 sb = upperTick.getSqrtRatioAtTick();
             uint160 sp = tick.getSqrtRatioAtTick();
-            console.log("liquidity: ",liquidity);
-            console.log("tick: ",tick);
 
             amount0 = calAmount0(liquidity,sb,sp);
-            console.log("amount0: ",amount0);
             amount1 = calAmount1(liquidity,sa, sp);
-            console.log("amount1: ",amount1);
              uint price;
             
             if(tick < 0){
@@ -87,9 +82,7 @@ library LiquidityConversion {
               to convert to realtime price for positive tick is scaledPrice/10**(decimal1-decimal0)
                 but for negative tick is scaledPrice/10**18
              */
-             console.log("liquidity",liq);
-            console.log(price);
-            console.log(inversePrice);  
+             console.log("liquidity",liq); 
             return (liq,scaleFactor);
     }
 
@@ -102,34 +95,7 @@ library LiquidityConversion {
 
 
 
-/*
-if ETH in not a token0, scaledAdjustedPrice is the price of USDC in ETH.
-if ETH in not a token0, inversePrice is the price of ETH in USDC.
-if ETH in not a token0, liq is the liquidity in ETH.
 
-if ETH is a token0, scaledAdjustedPrice is the price of ETH in USDC.
-if ETH is a token0, inversePrice is the price of USDC in ETH.
-if ETH is a token0, liq is the liquidity in USDC.
-
-    if(isBaseZero){
-        uint part1 = amount0 / (1 * 10**decimal0);
-        console.log("part1:", part1);
-        uint part2 = (amount1 * inversePrice) / ((1 * 10**decimal0) * (1 * 10**decimal1));
-        console.log("part2:", part2);
-        liq = (part1 + part2) * 1e18;
-        console.log("liq:", liq);
-        return (amount0, amount1, scaledAdjustedPrice, inversePrice, liq, part1, part2);
-    }else{
-    uint256 part1 = amount1 / (1 * 10**decimal1);
-            console.log("part1:", part1);
-
-    uint256 part2 = (amount0 * scaledAdjustedPrice) / ((1 * 10**decimal0) * (1 * 10**decimal1));
-            console.log("part2:", part2);
-
-    liq = (part1 + part2) * 1e18;
-    return (amount0, amount1, scaledAdjustedPrice, inversePrice, liq, part1, part2);
-    }
- */
 
 
 
