@@ -1,8 +1,6 @@
 const { ethers } = require('ethers');
 
 async function deployCurrency(deriveToken, poolAddress) {
-  // ABI including both functions
-
   const abi = [
     'function deploy2Currency(address deriveToken, string[2] memory _tokenName, string[2] memory _tokenSymbol, address _poolAddress, uint160 volume, uint deadline) returns(address[2] memory)',
 
@@ -79,29 +77,19 @@ async function deployCurrency(deriveToken, poolAddress) {
 
     const [
       vixHighToken,
-
       vixLowToken,
-
       circulation0,
-
       circulation1,
-
       contractHoldings0,
-
       contractHoldings1,
-
       reserve0,
-
       reserve1,
-
       fetchedPoolAddress,
     ] = result;
 
     const vixData = {
       vixHighToken,
-
       vixLowToken,
-
       circulation0: circulation0.toString(),
 
       circulation1: circulation1.toString(),

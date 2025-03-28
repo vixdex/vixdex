@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import Head from 'next/head';
 import { motion, AnimatePresence } from 'framer-motion';
-import { deployCurrency } from '../create';
+import { deployCurrency } from '../deployData';
 import { initializePool } from '../v4';
 
 export default function CreateVolatilityPair() {
@@ -24,7 +24,7 @@ export default function CreateVolatilityPair() {
       }
 
       setMessage(
-        `Pair deployed! High Token: ${vixData.vixHighToken}, Low Token: ${vixData.vixLowToken}`
+        `Pair deployed! High Token: ${vixData.vixHighToken}, Low Token: ${vixData.vixLowToken} `
       );
 
       // Step 2: Initialize pools for high and low VIX tokens
