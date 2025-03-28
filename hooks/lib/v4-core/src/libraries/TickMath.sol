@@ -53,7 +53,7 @@ library TickMath {
     /// @dev Throws if |tick| > max tick
     /// @param tick The input tick for the above formula
     /// @return sqrtPriceX96 A Fixed point Q64.96 number representing the sqrt of the price of the two assets (currency1/currency0)
-    /// at the given tick
+    /// at the given tickc
     function getSqrtPriceAtTick(int24 tick) internal pure returns (uint160 sqrtPriceX96) {
         unchecked {
             uint256 absTick;

@@ -19,7 +19,6 @@ contract HookMiningSample is Script {
 		// Set up the hook flags you wish to enable
         uint160 flags = uint160(
                     Hooks.BEFORE_ADD_LIQUIDITY_FLAG |
-                    Hooks.AFTER_ADD_LIQUIDITY_FLAG |
                     Hooks.BEFORE_SWAP_FLAG |
                     Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG |
                     Hooks.AFTER_SWAP_FLAG);
