@@ -4,6 +4,11 @@ VixDex - Decentralized Volatility Trading Protocol
 
 ## About this Project
 VixDex is a decentralized volatility trading protocol. It is a Uniswap V4 hook that introduces a custom pricing model for trading directly on volatility on-chain. VixDex allows traders to take positions on whether an asset’s volatility will increase or decrease, similar to VIX options trading but in a fully decentralized and automated manner.
+
+## Pitch Deck with Video
+
+https://x.com/FakeName137/status/1905868856201195986
+
 ## How it Works
 Traders can buy:
 
