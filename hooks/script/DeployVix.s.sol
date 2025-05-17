@@ -42,4 +42,5 @@ contract HookMiningSample is Script {
     function run() public {
         console.log("Hello");
     }
+    
 }

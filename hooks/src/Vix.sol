@@ -20,7 +20,7 @@ import {BeforeSwapDelta, toBeforeSwapDelta, BeforeSwapDeltaLibrary} from "v4-cor
 import {IUniswapV3Pool} from "@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {LiquidityConversion} from "./lib/LiquidityConversion.sol";
-
+import {IBondingCurve} from "./interfaces/IBondingCurve.sol";
 import "forge-std/console.sol";  // Foundry's console library
 
 /**
@@ -112,6 +112,7 @@ contract Vix is BaseHook{
 
 //getting Hook permission  
 
+// we are just permitting the 4 types of hooks
 function getHookPermissions() public pure override returns (Hooks.Permissions memory){
     return Hooks.Permissions({
                 beforeInitialize: false,
@@ -138,15 +139,6 @@ function getHookPermissions() public pure override returns (Hooks.Permissions me
  */
 
 function _beforeAddLiquidity(address, PoolKey calldata, IPoolManager.ModifyLiquidityParams calldata , bytes calldata)internal view override  returns (bytes4){
-    revert invalidLiquidityAction();
-}
-
-/**
- * @notice beforeRemoveLiquidty hook will revert if called
-
- */
-    
-function _beforeRemoveLiquidity(address, PoolKey calldata, IPoolManager.ModifyLiquidityParams calldata , bytes calldata)internal view override  returns (bytes4){
     revert invalidLiquidityAction();
 }
 
@@ -177,6 +169,8 @@ function _beforeSwap(address sender,PoolKey calldata key,IPoolManager.SwapParams
     bool zeroIsBase = (Currency.unwrap(key.currency0) == baseToken);
     require(pairEndingTime[_deriveAsset] > block.timestamp,"Pair expired!, reset it");
     if (params.zeroForOne) {
+        // it can handle buy/sell of volatile tokens!. and it can also handle the
+        // token sorting  
         (int128 _deltaSpecified, int128 _deltaUnspecified) = zeroForOneOperator(
             key,
             _deriveAsset,
@@ -206,7 +200,9 @@ function _beforeSwap(address sender,PoolKey calldata key,IPoolManager.SwapParams
     }
     return (this.beforeSwap.selector, beforeSwapDelta, 0);
 }
-
+//after swap help us to swap the reserve between vix tokens and mint or burn the contract
+//holding according to current IV changes by comparing with initial iv. 
+//the contract holdings gonna take part in the pricing
 function _afterSwap(address, PoolKey calldata, IPoolManager.SwapParams calldata, BalanceDelta, bytes calldata data)internal override returns (bytes4, int128){
     HookData memory hookData = abi.decode(data, (HookData));
     address _deriveAsset = hookData.deriveAsset;
@@ -214,6 +210,10 @@ function _afterSwap(address, PoolKey calldata, IPoolManager.SwapParams calldata,
     uint160 initialIv = vixTokens[_deriveAsset].initialIv;
     uint160 iv = calculateIv(_poolAddress,hookData.volume);
     if(vixTokens[_deriveAsset].reserve0 >0 && vixTokens[_deriveAsset].reserve1 >0){
+        // when we deployed the vix, we take the iv, in after swap, i calc iv again and compare with initial IV
+    // initial IV > current IV, reserve swap from high token to low token,
+    // and contract holding also burn for high token and mint for low toke.
+    // vice versa. we know that contract holding is take part in pricing the token!. 
         (uint reserveShift,uint tokenBurn) =  swapReserve(initialIv,iv,vixTokens[_deriveAsset].reserve0,vixTokens[_deriveAsset].reserve1,vixTokens[_deriveAsset].circulation0,vixTokens[_deriveAsset].circulation1,_deriveAsset);
         console.log("reserve shift: ",reserveShift);
         console.log("token burn: ",tokenBurn);
@@ -276,6 +276,8 @@ function processHighToken_ZeroOne(PoolKey calldata key,VixTokenData storage vixT
             : sellHighTokenExactOutput(key, vixTokenData, amountInOutPositive,zeroIsBase);
     }
 }
+
+
 
 /**
  * @dev Handles the purchase of a high-volatility token with an exact input amount.
@@ -536,6 +538,7 @@ function liquidateVixTokenToPm(uint256 amountEach, address currency0, address cu
         )
     );
 }
+
 /**
  * @dev Callback function triggered by the pool manager to handle unlocking and transferring tokens.
  *      This function settles and transfers liquidity amounts between the pool and the contract/sender.

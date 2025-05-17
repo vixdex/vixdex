@@ -7,3 +7,6 @@
 [submodule "hooks/lib/v2-core"]
 	path = hooks/lib/v2-core
 	url = https://github.com/uniswap/v2-core
+[submodule "hooks/lib/foundry-huff"]
+	path = hooks/lib/foundry-huff
+	url = https://github.com/huff-language/foundry-huff

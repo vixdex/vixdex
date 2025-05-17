@@ -1,0 +1,138 @@
+//interfaces
+#define function settingPrice(uint256,uint256,uint256) nonpayable returns (uint256)
+#define function costOfPurchasingToken(uint256,uint256,uint256,uint256,uint256) nonpayable returns (uint256)
+#define function costOfSellingToken(uint256,uint256, uint256, uint256,uint256) nonpayable returns (uint256)
+
+
+#define macro SETTING_PRICE() = takes(0) returns(0) {
+    0x04 calldataload       // slope         || stack: TOP[slope]BOTTOM
+    0x24 calldataload       // circulation   || stack: [circulation, slope]
+    mul                     // slope * circulation || stack: [slope * circulation] [result]
+    0x44 calldataload       // basePrice     || stack: [basePrice, result]
+    add                     // (slope * circulation) + basePrice || stack: [price]
+
+    0x00 mstore             // store result at memory 0x00
+    0x20 0x00 return        // return 32 bytes from memory
+}
+
+#define macro COST_OF_PURCHASING_TOKEN() = takes(0) returns(0) {
+    // Load the inputs
+    0x04 calldataload      // slope          || [slope]
+    0x24 calldataload      // n0             || [n0, slope]
+    0x44 calldataload      // k              || [k, n0, slope]
+
+    // term1 = slope * k * circulation
+    mul                    // k * n0         || [kn0, slope]
+    mul                    // slope * kn0    || [term1]
+
+    // Store term1 in memory at 0x00
+    0x00 mstore            // store term1 at memory 0x00 || stack:[] || memory: term1
+    
+
+    // // term2 = slope * (k * (k - 1)) / 2
+    0x44 calldataload      // k              || [k]
+    dup1                   // duplicate k    || [k, k]
+    0x01 sub               // k - 1          || [k - 1, k]
+    mul                    // k * (k - 1)    || [k(k - 1)]
+    0x04 calldataload      // slope          || [slope, k(k - 1)]
+    mul                    // slope * k(k - 1) || [term2_numerator]
+    0x02 div               // divide by 2    || [term2]
+    0x20 mstore            // store term2 at memory 0x20
+
+
+    // term3 = k * basePrice
+    0x64 calldataload      // basePrice      || [basePrice]
+    0x44 calldataload      // k              || [k, basePrice]
+    mul                    // k * basePrice  || [term3]
+    0x40 mstore            // store term3 at memory 0x40
+
+    // Add term1 + term2 + term3
+    0x00 mload            // term1
+    0x20 mload            // term2
+    add                    // term1 + term2   || [term1+term2]
+    0x40 mload            // term3
+    add                    // finalCost = term1 + term2 + term3 || [finalCost]
+    0x84 calldataload      // fee            || [fee, finalCost]
+    add                    // finalCost + fee || [finalCost + fee]
+    // Store final result with fee at memory location 0x60
+    0x60 mstore
+
+    // Return the result
+    0x20 0x60 return
+  
+}
+
+#define macro COST_OF_SELLING_TOKEN() = takes(0) returns(0){
+       // Load the inputs
+    0x04 calldataload      // slope          || [slope]
+    0x24 calldataload      // n0             || [n0, slope]
+    0x44 calldataload      // k              || [k, n0, slope]
+
+    // term1 = slope * k * circulation
+    mul                    // k * n0         || [kn0, slope]
+    mul                    // slope * kn0    || [term1]
+    // Store term1 in memory at 0x00
+    0x00 mstore            // store term1 at memory 0x00 || stack:[] || memory: term1
+    // term2 = slope * (k * (k - 1)) / 2
+    0x44 calldataload      // k              || [k]
+    dup1                   // duplicate k    || [k, k]
+    0x01 sub               // k - 1          || [k - 1, k]
+    mul                    // k * (k - 1)    || [k(k - 1)]
+    0x04 calldataload      // slope          || [slope, k(k - 1)]
+    mul                    // slope * k(k - 1) || [term2_numerator]
+    0x02 div               // divide by 2    || [term2]
+    0x20 mstore            // store term2 at memory 0x20
+
+    // term3 = k * basePrice
+    0x64 calldataload      // basePrice      || [basePrice]
+    0x44 calldataload      // k              || [k, basePrice]
+    mul                    // k * basePrice  || [term3]
+    0x40 mstore            // store term3 at memory 0x40
+    // Add term1 - term2 + term3
+    0x00 mload            // term1
+    0x20 mload            // term2
+    sub                    // term1 - term2   || [term1-term2]
+    0x40 mload            // term3
+    add                    // finalCost = term1 - term2 + term3 || [finalCost]
+    0x84 calldataload      // fee            || [fee, finalCost]
+    swap1               // swap finalCost and fee || [finalCost, fee]
+    sub                    // finalCost - fee || [finalCost - fee]
+    // Store final result with fee at memory location 0x60
+    0x60 mstore
+    // Return the result
+    0x20 0x60 return       // return 32 bytes from memory (final cost)
+}
+
+
+#define macro MAIN() = takes(0) returns(0){
+    0x00 calldataload // Load the first 32 bytes of the call data || stack : [call data]
+    0xe0 shr // Shift right by 224 bits to get the first 4 bytes || stack : [function selector]
+    dup1 __FUNC_SIG("settingPrice(uint256,uint256,uint256)") eq // Compare with the function selector for settingPrice || stack : [1 OR 0]
+    setPrice jumpi // If it is settingPrice(), jump to setPrice -> it will check the stack is 0 or 1 , if 1 jump to setPrice
+    dup1 __FUNC_SIG("costOfPurchasingToken(uint256,uint256,uint256,uint256,uint256)") eq // Compare with the function selector for costOfPurchasingToken || stack : [1 OR 0]
+    costOfPurchasing jumpi // If it is costOfPurchasingToken(), jump to costOfPurchasingToken -> it will check the stack is 0 or 1 , if 1 jump to costOfPurchasingToken
+    dup1 __FUNC_SIG("costOfSellingToken(uint256,uint256,uint256,uint256,uint256)") eq // Compare with the function selector for costOfSellingToken || stack : [1 OR 0]
+    costOfSelling jumpi // If it is costOfSellingToken(), jump to costOfSellingToken -> it will check the stack is 0 or 1 , if 1 jump to costOfSellingToken
+    
+    setPrice:
+        SETTING_PRICE()
+    
+    costOfPurchasing:
+        COST_OF_PURCHASING_TOKEN()
+    
+    costOfSelling:
+        COST_OF_SELLING_TOKEN()
+    
+    stop
+
+}
+
+
+/*
+bonding curve scale handling:
+
+slope = 0.003 * 1e18 → 3_000_000_000_000_000
+basePrice = 0.1 * 1e18 → 100_000_000_000_000_000
+circulation = 1000
+
+*/

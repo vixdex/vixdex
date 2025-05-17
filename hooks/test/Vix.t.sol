@@ -69,8 +69,8 @@ contract VixTest is Test,Deployers {
             token1ClaimID
         );
 
-        console.log("token0 claims balance: ",token0ClaimsBalance);
-        console.log("token1 claims balance: ",token1ClaimsBalance);
+        console.log("token0 claims balance in pool manager: ",token0ClaimsBalance);
+        console.log("token1 claims balance in pool manager: ",token1ClaimsBalance);
         console.log("hook address: ",address(hook));
 
     }
@@ -118,6 +118,24 @@ contract VixTest is Test,Deployers {
           console.log("reserve0: ",_reserve0);
           console.log("contractHoldings0: ",_contractHoldings0);
           console.log("balanceOf high vix after swap:",MockERC20(ivTokenAdd[0]).balanceOf(address(this)));
+        uint token0ClaimID = CurrencyLibrary.toId(Currency.wrap(ivTokenAdd[0]));
+        uint token1ClaimID = CurrencyLibrary.toId(Currency.wrap(ivTokenAdd[1]));
+        uint baseTokenClaimID = CurrencyLibrary.toId(Currency.wrap(baseToken));
+        
+                  uint token0ClaimsBalance = manager.balanceOf(
+            address(hook),
+            token0ClaimID
+        );
+        uint token1ClaimsBalance = manager.balanceOf(
+            address(hook),
+            token1ClaimID
+        );
+        uint baseBalInPM = manager.balanceOf(address(hook), baseTokenClaimID);
+
+        console.log("token0 claims balance in pool manager: ",token0ClaimsBalance);
+        console.log("token1 claims balance in pool manager: ",token1ClaimsBalance);
+        console.log("base token balance in pool manager: ",baseBalInPM);
+
 
         uint balance = MockERC20(ivTokenAdd[0]).balanceOf(address(this));
         uint halfVixToken = MockERC20(ivTokenAdd[0]).balanceOf(address(this));
@@ -445,6 +463,11 @@ function test_PriceChangesInVolatility() external {
 Limitations:
     1. ETH should be in token1 for the liquidity conversion to work correctly.(because it is static right now)
     12122106024
+
+
+steps to test: 
+anvil --fork-url https://ethereum-rpc.publicnode.com --chain-id 3133
+forge test --fork-url http://localhost:8545 test/Vix.t.sol
  */
 
 
