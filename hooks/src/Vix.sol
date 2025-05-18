@@ -158,43 +158,51 @@ function _beforeAddLiquidity(address, PoolKey calldata, IPoolManager.ModifyLiqui
  */
     
 function _beforeSwap(address sender,PoolKey calldata key,IPoolManager.SwapParams calldata params,bytes calldata data) internal override returns (bytes4, BeforeSwapDelta, uint24) {
-    console.log("swap triggered");
     BeforeSwapDelta beforeSwapDelta;
-    uint256 amountInOutPositive = params.amountSpecified > 0
+    HookData memory hookData = abi.decode(data, (HookData));
+    bool isBaseZero = Currency.unwrap(key.currency0) == baseToken;
+        uint256 amountInOutPositive = params.amountSpecified > 0
         ? uint256(params.amountSpecified)
         : uint256(-params.amountSpecified);
+        
 
-    HookData memory hookData = abi.decode(data, (HookData));
-    address _deriveAsset = hookData.deriveAsset;
-    bool zeroIsBase = (Currency.unwrap(key.currency0) == baseToken);
-    require(pairEndingTime[_deriveAsset] > block.timestamp,"Pair expired!, reset it");
-    if (params.zeroForOne) {
-        // it can handle buy/sell of volatile tokens!. and it can also handle the
-        // token sorting  
-        (int128 _deltaSpecified, int128 _deltaUnspecified) = zeroForOneOperator(
-            key,
-            _deriveAsset,
-            params,
-            amountInOutPositive,
-            zeroIsBase
-        );
-        beforeSwapDelta = toBeforeSwapDelta(_deltaSpecified, _deltaUnspecified);
-    }else{
-        (int128 _deltaSpecified, int128 _deltaUnspecified) = oneForZeroOperator(
-            key,
-            _deriveAsset,
-            params,
-            amountInOutPositive,
-            zeroIsBase
-        );
-        beforeSwapDelta = toBeforeSwapDelta(_deltaSpecified, _deltaUnspecified);
-        bytes32 id = keccak256(abi.encode(key)); // using keecak256 to generate bytes32 id for key
+    if(isBaseZero){ 
+        // for Buy(ZeroForOneSwap) -> only  exactOut - costOfPurchase function will be called
+        // for Sell(OneForZeroSwap) -> only exactIn - costOfSell function will be called
+     
+        //checking the mode of swap 
+        if(params.zeroForOne){
+            //reverting if the swap is exactIn
+            require(params.amountSpecified > 0, "exactIn not allowed");
+            // buy token function will call
+            (int128 _deltaSpecified, int128 _deltaUnspecified) =buyOperator(key, amountInOutPositive, isBaseZero, hookData.deriveAsset);
+            beforeSwapDelta = toBeforeSwapDelta(_deltaSpecified, _deltaUnspecified);
 
-        //amount1 is deltaspecified if the amountSpecified is positive, amount0 is deltaunspecified if the amountSpecified is negative 
-        if(params.amountSpecified < 0){
-            emit HookSwap(id,sender,_deltaSpecified,_deltaUnspecified,0, 0); 
         }else{
-            emit HookSwap(id,sender,_deltaUnspecified,_deltaSpecified,0, 0); 
+            //reverting if the swap is exactOut
+            require(params.amountSpecified < 0, "exactOut not allowed");
+            // sell token function will call
+            (int128 _deltaSpecified, int128 _deltaUnspecified) = sellOperator(key, amountInOutPositive, isBaseZero, hookData.deriveAsset);
+            beforeSwapDelta = toBeforeSwapDelta(_deltaSpecified, _deltaUnspecified);
+        }
+        
+    }else{
+        // for Buy(OneForZeroSwap) -> only exactOut - costOfPurchase function will be called
+        // for Sell(ZeroForOneSwap) -> only exactIn - costOfSell function will be called
+        //checking the mode of swap
+        if(params.zeroForOne){
+            //reverting if the swap is exactOut
+            require(params.amountSpecified < 0, "exactOut not allowed");
+            // sell token function will call
+            (int128 _deltaSpecified, int128 _deltaUnspecified) = sellOperator(key, amountInOutPositive, isBaseZero, hookData.deriveAsset);
+            beforeSwapDelta = toBeforeSwapDelta(_deltaSpecified, _deltaUnspecified);
+
+        }else{
+            //reverting if the swap is exactIn
+            require(params.amountSpecified > 0, "exactIn not allowed");
+            // buy token function will call
+            (int128 _deltaSpecified, int128 _deltaUnspecified) = buyOperator(key, amountInOutPositive, isBaseZero, hookData.deriveAsset);
+            beforeSwapDelta = toBeforeSwapDelta(_deltaSpecified, _deltaUnspecified);
 
         }
     }
@@ -222,109 +230,21 @@ function _afterSwap(address, PoolKey calldata, IPoolManager.SwapParams calldata,
     return(this.afterSwap.selector,0);
 }
 
-/**
- * @dev Handles the swap logic when swapping from token0 to token1 (zeroForOne).
- *      Determines whether the asset being swapped is a high or low volatility token 
- *      and routes the execution accordingly.
- *
- * @param key The pool key containing details of the liquidity pool.
- * @param _deriveAsset The address of the derived asset being swapped.
- * @param params Swap parameters including amount specified and swap direction.
- * @param amountInOutPositive The absolute value of the swap amount.
- * @param zeroIsBase Boolean indicating whether currency0 is the base token.
- *
- * @return int128 The delta amount of the specified token after processing the swap.
- * @return int128 The delta amount of the unspecified token after processing the swap.
- */
 
-function zeroForOneOperator(PoolKey calldata key,address _deriveAsset,IPoolManager.SwapParams calldata params,uint256 amountInOutPositive,bool zeroIsBase) public returns (int128, int128) {
+
+function buyOperator(PoolKey calldata key,uint amount,bool zeroIsBase,address _deriveAsset) private returns (int128,int128){
     VixTokenData storage vixTokenData = vixTokens[_deriveAsset];
-    address _currency0 = Currency.unwrap(key.currency0);
-    address _currency1 = Currency.unwrap(key.currency1);
-    bool isHighToken = (_currency0 == vixTokenData.vixHighToken || _currency1 == vixTokenData.vixHighToken);
-    bool isExactIn = params.amountSpecified < 0;
-    
-    return isHighToken
-        ? processHighToken_ZeroOne(key, vixTokenData, amountInOutPositive, zeroIsBase, isExactIn)
-        : processLowToken_ZeroOne(key, vixTokenData, amountInOutPositive, zeroIsBase, isExactIn);
+   bool isHighToken = (address(Currency.unwrap(key.currency0)) == vixTokenData.vixHighToken || address(Currency.unwrap(key.currency1)) == vixTokenData.vixHighToken);
+    return isHighToken ? buyHighToken(key,vixTokenData,amount,zeroIsBase) : buyLowToken(key,vixTokenData,amount,zeroIsBase);
 }
 
-/**
- * @dev Processes a swap involving a high-volatility token when swapping from token0 to token1.
- *      Determines whether the swap is an exact input or exact output transaction and 
- *      routes the execution accordingly.
- *
- * @param key The pool key containing details of the liquidity pool.
- * @param vixTokenData Storage reference to the Vix token data for the derived asset.
- * @param amountInOutPositive The absolute value of the swap amount.
- * @param zeroIsBase Boolean indicating whether currency0 is the base token.
- * @param isExactIn Boolean indicating if the swap is an exact input transaction (true) or exact output (false).
- *
- * @return int128 The delta amount of the specified token after processing the swap.
- * @return int128 The delta amount of the unspecified token after processing the swap.
- */
-
-function processHighToken_ZeroOne(PoolKey calldata key,VixTokenData storage vixTokenData,uint256 amountInOutPositive,bool zeroIsBase,bool isExactIn) private returns (int128, int128) {
-    uint256 circulation = vixTokenData.circulation0;
-    if (isExactIn) {
-        return zeroIsBase
-            ? buyHighTokenExactInput(key, vixTokenData, amountInOutPositive,zeroIsBase)
-            : sellHighTokenExactInput(key, vixTokenData, amountInOutPositive,zeroIsBase);
-    } else {
-        return zeroIsBase
-            ? buyHighTokenExactOutput(key, vixTokenData, amountInOutPositive,zeroIsBase)
-            : sellHighTokenExactOutput(key, vixTokenData, amountInOutPositive,zeroIsBase);
-    }
+function sellOperator(PoolKey calldata key,uint amount,bool zeroIsBase,address _deriveAsset) private returns (int128,int128){
+    VixTokenData storage vixTokenData = vixTokens[_deriveAsset];
+   bool isHighToken = (address(Currency.unwrap(key.currency0)) == vixTokenData.vixHighToken || address(Currency.unwrap(key.currency1)) == vixTokenData.vixHighToken);
+    return isHighToken ? sellHighToken(key,vixTokenData,amount,zeroIsBase) : sellLowToken(key,vixTokenData,amount,zeroIsBase);
 }
 
-
-
-/**
- * @dev Handles the purchase of a high-volatility token with an exact input amount.
- *      Calculates the number of tokens returned based on the given cost, updates the 
- *      circulation and reserves, and transfers the appropriate amounts between the pool 
- *      and contract.
- *
- * @param key The pool key containing details of the liquidity pool.
- * @param vixTokenData Storage reference to the Vix token data for the derived asset.
- * @param amountInOutPositive The exact input amount of currency0 used to purchase the high-volatility token.
- *
- * @return int128 The delta amount of currency0 spent in the swap (positive value).
- * @return int128 The delta amount of the high-volatility token received in the swap (negative value).
- */
-
-function buyHighTokenExactInput(PoolKey calldata key,VixTokenData storage vixTokenData,uint256 amountInOutPositive,bool zeroIsBase) private returns (int128, int128) {
-    console.log("buy high vix");
-    uint256 tokenReturns = vixTokenData.circulation0.tokensForGivenCost(amountInOutPositive, SLOPE, FEE, BASE_PRICE) * 1e18;
-    console.log("token Return: ",tokenReturns);
-    vixTokenData.contractHoldings0 += tokenReturns;
-    vixTokenData.circulation0 += tokenReturns;
-    vixTokenData.reserve0 += amountInOutPositive;
-    if(zeroIsBase){
-        key.currency0.take(poolManager, address(this), amountInOutPositive, true);
-        key.currency1.settle(poolManager, address(this), tokenReturns, true);
-    }else{
-        key.currency1.take(poolManager, address(this), amountInOutPositive, true);
-        key.currency0.settle(poolManager, address(this), tokenReturns, true);       
-    }
-    return (int128(uint128(amountInOutPositive)), -int128(uint128(tokenReturns)));
-}
-
-/**
- * @dev Handles the purchase of a high-volatility token with an exact output amount.
- *      Determines the required cost to obtain the desired number of tokens, updates
- *      circulation and reserves, and transfers the appropriate amounts between the
- *      pool and contract.
- *
- * @param key The pool key containing details of the liquidity pool.
- * @param vixTokenData Storage reference to the Vix token data for the derived asset.
- * @param amountInOutPositive The exact output amount of high-volatility tokens to be received.
- *
- * @return int128 The delta amount of the high-volatility token spent in the swap (negative value).
- * @return int128 The delta amount of currency0 required to complete the swap (positive value).
- */
-
-function buyHighTokenExactOutput(PoolKey calldata key,VixTokenData storage vixTokenData,uint256 amountInOutPositive,bool zeroIsBase) private returns (int128, int128) {
+function buyHighToken(PoolKey calldata key,VixTokenData storage vixTokenData,uint256 amountInOutPositive,bool zeroIsBase) private returns (int128, int128) {
     uint256 cost = vixTokenData.circulation0.costOfPurchasingToken(amountInOutPositive, SLOPE, BASE_PRICE, FEE);
     vixTokenData.contractHoldings0 += amountInOutPositive;
     vixTokenData.circulation0 += amountInOutPositive;
@@ -339,37 +259,7 @@ function buyHighTokenExactOutput(PoolKey calldata key,VixTokenData storage vixTo
     return (-int128(uint128(amountInOutPositive)), int128(uint128(cost)));
 }
 
-function processLowToken_ZeroOne(PoolKey calldata key,VixTokenData storage vixTokenData,uint256 amountInOutPositive,bool zeroIsBase,bool isExactIn) private returns (int128, int128) {
-    uint256 circulation = vixTokenData.circulation1;
-    if (isExactIn) {
-        return zeroIsBase
-            ? buyLowTokenExactInput(key, vixTokenData, amountInOutPositive,zeroIsBase)
-            : sellLowTokenExactInput(key, vixTokenData, amountInOutPositive, zeroIsBase);
-    } else {
-        return zeroIsBase
-            ? buyLowTokenExactOutput(key, vixTokenData, amountInOutPositive,zeroIsBase)
-            : sellLowTokenExactOutput(key, vixTokenData, amountInOutPositive,zeroIsBase);
-    }
-}
-
-function buyLowTokenExactInput(PoolKey calldata key,VixTokenData storage vixTokenData,uint256 amountInOutPositive,bool zeroIsBase) private returns (int128, int128) {
-    uint256 tokenReturns = vixTokenData.circulation1.tokensForGivenCost(amountInOutPositive, SLOPE, FEE, BASE_PRICE) * 1e18;
-    vixTokenData.contractHoldings1 += tokenReturns;
-    vixTokenData.circulation1 += tokenReturns;
-    vixTokenData.reserve1 += amountInOutPositive;
-    if(zeroIsBase){
-        key.currency0.take(poolManager, address(this), amountInOutPositive, true);
-        key.currency1.settle(poolManager, address(this), tokenReturns, true);
-    }else{
-        key.currency1.take(poolManager, address(this), amountInOutPositive, true);
-        key.currency0.settle(poolManager, address(this), tokenReturns, true);
-    }
-    return (int128(uint128(amountInOutPositive)), -int128(uint128(tokenReturns)));
-}
-
-
-
-function buyLowTokenExactOutput(PoolKey calldata key,VixTokenData storage vixTokenData,uint256 amountInOutPositive,bool zeroIsBase) private returns (int128, int128) {
+function buyLowToken(PoolKey calldata key,VixTokenData storage vixTokenData,uint256 amountInOutPositive,bool zeroIsBase) private returns (int128, int128) {
     uint256 cost = vixTokenData.circulation1.costOfPurchasingToken(amountInOutPositive, SLOPE, BASE_PRICE, FEE);
     vixTokenData.contractHoldings1 += amountInOutPositive;
     vixTokenData.circulation1 += amountInOutPositive;
@@ -384,32 +274,7 @@ function buyLowTokenExactOutput(PoolKey calldata key,VixTokenData storage vixTok
     return (-int128(uint128(amountInOutPositive)), int128(uint128(cost)));
 }
 
-    
-function oneForZeroOperator(PoolKey calldata key,address _deriveAsset,IPoolManager.SwapParams calldata params,uint256 amountInOutPositive,bool zeroIsBase) public returns (int128, int128) {
-    VixTokenData storage vixTokenData = vixTokens[_deriveAsset];
-    address _currency0 = Currency.unwrap(key.currency0);
-    address _currency1 = Currency.unwrap(key.currency1);
-    bool isHighToken = (_currency0 == vixTokenData.vixHighToken || _currency1 == vixTokenData.vixHighToken);
-    bool isExactIn = params.amountSpecified < 0;
-    console.log("one for zero operator triggered");
-    return isHighToken
-        ? processHighToken_OneZero(key, vixTokenData, amountInOutPositive, zeroIsBase, isExactIn)
-        : processLowToken_OneZero(key, vixTokenData, amountInOutPositive, zeroIsBase, isExactIn);
-}
-
-function processHighToken_OneZero(PoolKey calldata key,VixTokenData storage vixTokenData,uint256 amountInOutPositive,bool zeroIsBase,bool isExactIn) private returns (int128, int128) {
-    if (isExactIn) {
-        return zeroIsBase
-            ? sellHighTokenExactInput(key, vixTokenData, amountInOutPositive, zeroIsBase)
-            : buyHighTokenExactInput(key, vixTokenData, amountInOutPositive, zeroIsBase);
-    } else {
-        return zeroIsBase
-            ?  sellHighTokenExactOutput(key, vixTokenData, amountInOutPositive, zeroIsBase)
-            : buyHighTokenExactOutput(key, vixTokenData, amountInOutPositive,zeroIsBase);
-    }
-}
-
-function sellHighTokenExactInput(PoolKey calldata key,VixTokenData storage vixTokenData,uint256 amountInOutPositive,bool zeroIsBase) private returns (int128, int128) {
+function sellHighToken(PoolKey calldata key,VixTokenData storage vixTokenData,uint256 amountInOutPositive,bool zeroIsBase) private returns (int128, int128) {
     uint256 baseToken_returns = vixTokenData.circulation0.costOfSellingToken(amountInOutPositive, SLOPE, BASE_PRICE, FEE);
     vixTokenData.contractHoldings0 -= amountInOutPositive;
     vixTokenData.circulation0 -= amountInOutPositive;
@@ -424,35 +289,7 @@ function sellHighTokenExactInput(PoolKey calldata key,VixTokenData storage vixTo
     return (int128(uint128(amountInOutPositive)), -int128(uint128(baseToken_returns)));
 }
 
-function sellHighTokenExactOutput(PoolKey calldata key,VixTokenData storage vixTokenData,uint256 amountInOutPositive,bool zeroIsBase) private returns (int128, int128) {
-
-   uint tokensToSell =  vixTokenData.circulation0.tokensForGivenCost(amountInOutPositive,SLOPE,FEE,BASE_PRICE) * 1e18;
-   vixTokenData.circulation0 -= tokensToSell;
-   vixTokenData.contractHoldings0 -= tokensToSell;
-   vixTokenData.reserve0 -= amountInOutPositive;
-   if(zeroIsBase){
-        key.currency0.settle(poolManager,address(this),amountInOutPositive,true);
-        key.currency1.take(poolManager,address(this),tokensToSell,true);
-   }else{
-        key.currency1.settle(poolManager,address(this),amountInOutPositive,true);
-        key.currency0.take(poolManager,address(this),tokensToSell,true);
-   }
-   return  (-int128(uint128(amountInOutPositive)), int128(uint128(tokensToSell)));
-}
-
-function processLowToken_OneZero(PoolKey calldata key,VixTokenData storage vixTokenData,uint256 amountInOutPositive,bool zeroIsBase,bool isExactIn) private returns (int128, int128) {
-    if (isExactIn) {
-        return zeroIsBase
-            ?  sellLowTokenExactInput(key, vixTokenData, amountInOutPositive,zeroIsBase)
-            : buyLowTokenExactInput(key, vixTokenData, amountInOutPositive,zeroIsBase);
-    } else {
-        return zeroIsBase
-            ? sellLowTokenExactOutput(key, vixTokenData, amountInOutPositive,zeroIsBase)
-            : buyLowTokenExactOutput(key, vixTokenData, amountInOutPositive,zeroIsBase);
-    }
-}
-
-function sellLowTokenExactInput(PoolKey calldata key,VixTokenData storage vixTokenData,uint256 amountInOutPositive,bool zeroIsBase) private returns (int128, int128) {
+function sellLowToken(PoolKey calldata key,VixTokenData storage vixTokenData,uint256 amountInOutPositive,bool zeroIsBase) private returns (int128, int128) {
     uint256 baseToken_returns = vixTokenData.circulation1.costOfSellingToken(amountInOutPositive, SLOPE, BASE_PRICE, FEE);
     vixTokenData.contractHoldings1 -= amountInOutPositive;
     vixTokenData.circulation1 -= amountInOutPositive;
@@ -467,20 +304,13 @@ function sellLowTokenExactInput(PoolKey calldata key,VixTokenData storage vixTok
     return (int128(uint128(amountInOutPositive)), -int128(uint128(baseToken_returns)));
 }
 
-function sellLowTokenExactOutput(PoolKey calldata key,VixTokenData storage vixTokenData,uint256 amountInOutPositive,bool zeroIsBase) private returns (int128, int128) {
-   uint tokensToSell =  vixTokenData.circulation1.tokensForGivenCost(amountInOutPositive,SLOPE,FEE,BASE_PRICE) * 1e18;
-   vixTokenData.circulation1 -= tokensToSell;
-   vixTokenData.contractHoldings1 -= tokensToSell;
-   vixTokenData.reserve1 -= amountInOutPositive;
-    if(zeroIsBase){
-        key.currency0.settle(poolManager,address(this),amountInOutPositive,true);
-        key.currency1.take(poolManager,address(this),tokensToSell,true);
-    }else{
-        key.currency1.settle(poolManager,address(this),amountInOutPositive,true);
-        key.currency0.take(poolManager,address(this),tokensToSell,true);
-    }
-   return  (-int128(uint128(amountInOutPositive)), int128(uint128(tokensToSell)));
-}
+
+
+
+
+
+
+
 
 /**
  * @dev Deploys two volatile ERC20 tokens for a given derived asset and initializes their liquidity.

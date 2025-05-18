@@ -115,7 +115,9 @@ contract Deployers is Test {
     }
 
     function deployMintAndApproveCurrency() internal returns (Currency currency) {
-        MockERC20 token = deployTokens(1, 2 ** 255)[0];
+        //MockERC20 token = deployTokens(1, 2 ** 255)[0];
+        MockERC20 token = deployTokens(1, 1000 * 1e18)[0];
+
 
         address[9] memory toApprove = [
             address(swapRouter),
