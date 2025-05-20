@@ -70,9 +70,9 @@ contract Vix is BaseHook{
     mapping(address=>bool) public isPairInitiated;
     mapping(address=>uint) public pairInitiatedTime;
     mapping(address=>uint) public pairEndingTime;
-    uint constant public SLOPE = 1e9; // 0.000000000000001
-    uint constant public FEE = 10000; //1% || 0.01
-    uint constant public BASE_PRICE = 0.0000060 * 1e18;
+    uint public SLOPE;
+    uint public FEE; //1% || 0.01
+    uint public BASE_PRICE;
     uint constant public IV_TOKEN_SUPPLY = 250 * 1000000 * (10**18);
     uint constant public RESERVE_SHIFT_SLOPE = 3 * 1e16; //3% and equal to 0.03 * 1e18 || according to reserve shift math
     struct VixTokenData {
@@ -103,11 +103,16 @@ contract Vix is BaseHook{
     Currency currency1;
     address sender;
     }
-
+    //Bonding curve contract
+    IBondingCurve public bondingCurve;
 
     //initiating BaseHook with IPoolManager
-    constructor(IPoolManager poolManager,address _baseToken) BaseHook(poolManager) {
+    constructor(IPoolManager poolManager,address _baseToken,address _bondingCurve,uint slope, uint fee,uint basePrice) BaseHook(poolManager) {
         baseToken = _baseToken;
+        SLOPE = slope;
+        FEE = fee;
+        BASE_PRICE = basePrice;
+        bondingCurve = IBondingCurve(_bondingCurve);
     }
 
 //getting Hook permission  
@@ -245,10 +250,12 @@ function sellOperator(PoolKey calldata key,uint amount,bool zeroIsBase,address _
 }
 
 function buyHighToken(PoolKey calldata key,VixTokenData storage vixTokenData,uint256 amountInOutPositive,bool zeroIsBase) private returns (int128, int128) {
-    uint256 cost = vixTokenData.circulation0.costOfPurchasingToken(amountInOutPositive, SLOPE, BASE_PRICE, FEE);
-    vixTokenData.contractHoldings0 += amountInOutPositive;
+    uint256 cost = bondingCurve.costOfPurchasingToken(SLOPE,vixTokenData.circulation0,amountInOutPositive,BASE_PRICE,FEE);
+   unchecked {
+     vixTokenData.contractHoldings0 += amountInOutPositive;
     vixTokenData.circulation0 += amountInOutPositive;
     vixTokenData.reserve0 += cost;
+   }
     if(zeroIsBase){
         key.currency0.take(poolManager, address(this), cost, true);
         key.currency1.settle(poolManager, address(this), amountInOutPositive, true);
@@ -260,7 +267,7 @@ function buyHighToken(PoolKey calldata key,VixTokenData storage vixTokenData,uin
 }
 
 function buyLowToken(PoolKey calldata key,VixTokenData storage vixTokenData,uint256 amountInOutPositive,bool zeroIsBase) private returns (int128, int128) {
-    uint256 cost = vixTokenData.circulation1.costOfPurchasingToken(amountInOutPositive, SLOPE, BASE_PRICE, FEE);
+    uint256 cost = bondingCurve.costOfPurchasingToken(SLOPE,vixTokenData.circulation1,amountInOutPositive,BASE_PRICE,FEE);
     vixTokenData.contractHoldings1 += amountInOutPositive;
     vixTokenData.circulation1 += amountInOutPositive;
     vixTokenData.reserve1 += cost;
@@ -275,7 +282,7 @@ function buyLowToken(PoolKey calldata key,VixTokenData storage vixTokenData,uint
 }
 
 function sellHighToken(PoolKey calldata key,VixTokenData storage vixTokenData,uint256 amountInOutPositive,bool zeroIsBase) private returns (int128, int128) {
-    uint256 baseToken_returns = vixTokenData.circulation0.costOfSellingToken(amountInOutPositive, SLOPE, BASE_PRICE, FEE);
+   uint256 baseToken_returns = bondingCurve.costOfSellingToken(SLOPE,vixTokenData.circulation0,amountInOutPositive,BASE_PRICE, FEE);
     vixTokenData.contractHoldings0 -= amountInOutPositive;
     vixTokenData.circulation0 -= amountInOutPositive;
     vixTokenData.reserve0 -= baseToken_returns;
@@ -290,7 +297,7 @@ function sellHighToken(PoolKey calldata key,VixTokenData storage vixTokenData,ui
 }
 
 function sellLowToken(PoolKey calldata key,VixTokenData storage vixTokenData,uint256 amountInOutPositive,bool zeroIsBase) private returns (int128, int128) {
-    uint256 baseToken_returns = vixTokenData.circulation1.costOfSellingToken(amountInOutPositive, SLOPE, BASE_PRICE, FEE);
+    uint256 baseToken_returns = bondingCurve.costOfSellingToken(SLOPE,vixTokenData.circulation1,amountInOutPositive,BASE_PRICE, FEE);
     vixTokenData.contractHoldings1 -= amountInOutPositive;
     vixTokenData.circulation1 -= amountInOutPositive;
     vixTokenData.reserve1 -= baseToken_returns;
@@ -519,7 +526,7 @@ function swapReserve(uint initialIv, uint currentIv, uint reserve0, uint reserve
      
 }
 
-function vixTokensPrice(uint contractHoldings) public pure returns(uint){
+function vixTokensPrice(uint contractHoldings) public view returns(uint){
     uint price = ((SLOPE * contractHoldings) / 1e18) + BASE_PRICE;
     return (price); // we should do price/1e18 for readable price
     

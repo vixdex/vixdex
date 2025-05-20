@@ -18,8 +18,8 @@
 #define macro COST_OF_PURCHASING_TOKEN() = takes(0) returns(0) {
     // Load the inputs
     0x04 calldataload      // slope          || [slope]
-    0x24 calldataload      // n0             || [n0, slope]
-    0x44 calldataload      // k              || [k, n0, slope]
+    0x24 calldataload      // n0             || [slope,n0]
+    0x44 calldataload      // k              || [slope,n0,k]
 
     // term1 = slope * k * circulation
     mul                    // k * n0         || [kn0, slope]
@@ -31,12 +31,16 @@
 
     // // term2 = slope * (k * (k - 1)) / 2
     0x44 calldataload      // k              || [k]
-    dup1                   // duplicate k    || [k, k]
-    0x01 sub               // k - 1          || [k - 1, k]
-    mul                    // k * (k - 1)    || [k(k - 1)]
+    0x01                    // 1        || [1, k]
+    swap1                   // swap k and 1   || [k, 1]
+    sub                    // k-1         || [k - 1]
+    0x44 calldataload      // k              || [k - 1, k]
+    mul                    // k * (k-1)    || [k(k - 1)]
     0x04 calldataload      // slope          || [slope, k(k - 1)]
     mul                    // slope * k(k - 1) || [term2_numerator]
-    0x02 div               // divide by 2    || [term2]
+    0x02                   // 2        || [2, term2_numerator]
+    swap1                   // swap term2_numerator and 2 || [term2_numerator, 2]
+    div                     // term2_numerator/2 || [term2]
     0x20 mstore            // store term2 at memory 0x20
 
 
@@ -65,38 +69,37 @@
 #define macro COST_OF_SELLING_TOKEN() = takes(0) returns(0){
        // Load the inputs
     0x04 calldataload      // slope          || [slope]
-    0x24 calldataload      // n0             || [n0, slope]
-    0x44 calldataload      // k              || [k, n0, slope]
+    0x24 calldataload      // n0             || [slope,n0]
+    0x44 calldataload      // k              || [slope,n0,k]
 
     // term1 = slope * k * circulation
     mul                    // k * n0         || [kn0, slope]
     mul                    // slope * kn0    || [term1]
     // Store term1 in memory at 0x00
     0x00 mstore            // store term1 at memory 0x00 || stack:[] || memory: term1
-    // term2 = slope * (k * (k - 1)) / 2
+    // term2 = slope * (k * (k +1)) / 2
     0x44 calldataload      // k              || [k]
     dup1                   // duplicate k    || [k, k]
-    0x01 sub               // k - 1          || [k - 1, k]
-    mul                    // k * (k - 1)    || [k(k - 1)]
-    0x04 calldataload      // slope          || [slope, k(k - 1)]
-    mul                    // slope * k(k - 1) || [term2_numerator]
-    0x02 div               // divide by 2    || [term2]
+    0x01  add               // k + 1          || [k + 1, k]
+    mul                    // k * (k + 1)    || [k(k + 1)]
+    0x04 calldataload      // slope          || [k(k + 1),slope]
+    mul                    // slope * k(k + 1) || [term2_numerator]
+    0x02 swap1 div               // divide by 2    || [term2]
     0x20 mstore            // store term2 at memory 0x20
 
     // term3 = k * basePrice
     0x64 calldataload      // basePrice      || [basePrice]
-    0x44 calldataload      // k              || [k, basePrice]
+    0x44 calldataload      // k              || [basePrice,k]
     mul                    // k * basePrice  || [term3]
     0x40 mstore            // store term3 at memory 0x40
     // Add term1 - term2 + term3
     0x00 mload            // term1
-    0x20 mload            // term2
-    sub                    // term1 - term2   || [term1-term2]
-    0x40 mload            // term3
+    0x20 mload            // term2 [term1, term2]
+    swap1 sub                    // term1 - term2   || [term1-term2]
+    0x40 mload            // term3|| [term3, term1-term2]
     add                    // finalCost = term1 - term2 + term3 || [finalCost]
-    0x84 calldataload      // fee            || [fee, finalCost]
-    swap1               // swap finalCost and fee || [finalCost, fee]
-    sub                    // finalCost - fee || [finalCost - fee]
+    0x84 calldataload      // fee            || [finalCost,fee]
+    swap1 sub                    // finalCost - fee || [finalCost - fee]
     // Store final result with fee at memory location 0x60
     0x60 mstore
     // Return the result
