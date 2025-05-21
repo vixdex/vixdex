@@ -22,6 +22,8 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {LiquidityConversion} from "./lib/LiquidityConversion.sol";
 import {IBondingCurve} from "./interfaces/IBondingCurve.sol";
 import "forge-std/console.sol";  // Foundry's console library
+import {TickMath} from "@uniswap/v3-core/contracts/libraries/TickMath.sol";
+
 
 /**
  * @title Vix - Implied Volatility Trading Contract
@@ -472,7 +474,23 @@ function calculateIv(address _poolAddress,uint160 volume) public view returns (u
     uint24 fee = pool.fee();
     uint8 decimal0 = MockERC20(token0).decimals();
     uint8 decimal1 = MockERC20(token1).decimals();
-    (uint liq,uint160 scaleFactor) = liquidity.tickLiquidity(tick,tickSpacing,false);
+    // Compute sqrt ratios
+    int24 bottomTick = (tick / tickSpacing) * tickSpacing;
+    int24 upperTick = bottomTick + tickSpacing;
+
+    uint160 sa = TickMath.getSqrtRatioAtTick(bottomTick);
+    uint160 sb = TickMath.getSqrtRatioAtTick(upperTick);
+    uint160 sp = TickMath.getSqrtRatioAtTick(tick);
+
+    // Call tickLiquidity with full args
+    (uint liq, uint160 scaleFactor) = LiquidityConversion.tickLiquidity(
+        liquidity,
+        sa,
+        sb,
+        sp,
+        false,
+        tick < 0
+    );
     uint160 scaledDownFee = uint160(fee/1000);
     uint160 iv =  volume.ivCalculation(uint160(liq),scaleFactor,scaledDownFee);
     console.log("iv: ",iv);

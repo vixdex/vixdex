@@ -2,100 +2,121 @@
 pragma solidity ^0.8.13;
 
 import {TickMath} from "@uniswap/v3-core/contracts/libraries/TickMath.sol";
-import {FixedPoint96} from '@uniswap/v3-core/contracts/libraries/FixedPoint96.sol';
-import {FullMath} from '@uniswap/v3-core/contracts/libraries/FullMath.sol';
+import {FixedPoint96} from "@uniswap/v3-core/contracts/libraries/FixedPoint96.sol";
+import {FullMath} from "@uniswap/v3-core/contracts/libraries/FullMath.sol";
 import {LiquidityAmounts} from "@uniswap/v3-periphery/contracts/libraries/LiquidityAmounts.sol";
 import "forge-std/console.sol";
 
 library LiquidityConversion {
     using TickMath for int24;
+
     uint256 private constant Q96 = 2**96;
     uint256 private constant Q192 = 2**192;
+    uint256 private constant ONE_E18 = 1e18;
+    uint256 private constant ONE_E36 = 1e36;
 
-
-    function sqrtPriceX96ToPrice(uint sqrtPriceX96) internal pure returns (uint price){
-        return (sqrtPriceX96 ** 2) /Q192;
-    }
-
-    function calAmount0(uint liq,uint pa,uint pb) internal pure returns (uint){
-        if (pa > pb) {
-         uint256 temp = pa;
-         pa = pb;
-         pb = temp;
-
+    /// @notice Converts sqrtPriceX96 to price
+    function sqrtPriceX96ToPrice(uint sqrtPriceX96) internal pure returns (uint price) {
+        assembly {
+            let sp := sqrtPriceX96
+            let product := mul(sp, sp)
+            let q192 := exp(2, 192)
+            price := div(product, q192)
         }
-
-        //liq * Q96 * (pb-pa) /pa /pb
-
-        uint256 intermediate = FullMath.mulDiv(liq, pb - pa, pa); // Compute safely
-        uint result = FullMath.mulDiv(intermediate,Q96,pb);
-        return result;
-
-    }
-    function calAmount1(uint liq,uint pa,uint pb) internal pure returns (uint){
-        //(liq * (pb - pa) / Q96)
-        if (pa > pb) {
-         uint256 temp = pa;
-         pa = pb;
-         pb = temp;
-
-        }
-        uint numerator = liq * (pb-pa);
-        uint result = numerator/Q96;
-        return result;
     }
 
-
-    function tickLiquidity(uint128 liquidity,int24 tick,int24 tickSpacing,bool isBaseZero) internal pure returns (uint liq, uint160 scaleFactor) {
-            // liquidity = 22510401004259913887;
-            // tick = 195879;
-            uint amount0;
-            uint amount1;
-            uint inversePrice;
-            int24 bottomTick = tick / tickSpacing * tickSpacing;
-            int24 upperTick = bottomTick + tickSpacing;
-            uint160 sa = bottomTick.getSqrtRatioAtTick();
-            uint160 sb = upperTick.getSqrtRatioAtTick();
-            uint160 sp = tick.getSqrtRatioAtTick();
-
-            amount0 = calAmount0(liquidity,sb,sp);
-            amount1 = calAmount1(liquidity,sa, sp);
-             uint price;
-            
-            if(tick < 0){
-                price = FullMath.mulDiv(sp * 1e18, sp, Q192); // Safe computation
-                inversePrice = 1e36/(price);
-                liq = isBaseZero?(amount1*inversePrice)+amount0:(amount0*price)+amount1; 
-                scaleFactor = 36;
-
-            }else{
-                price = FullMath.mulDiv(sp , sp, Q192);
-                inversePrice = 1e18/(price);
-                liq = isBaseZero?(amount1*inversePrice)+amount0:(amount0*price)+amount1; 
-                scaleFactor = 18;
+    /// @notice Calculate amount0 using liquidity, price A and price B
+    function calAmount0(uint liq, uint pa, uint pb) internal pure returns (uint result) {
+        uint Q96 = 2**96;
+        assembly {
+            if gt(pa, pb) {
+                let temp := pa
+                pa := pb
+                pb := temp
             }
 
-            /*
-             Price - price of token0 on token1. eg: 1 USDC = 0.003ETH on usdc/eth pair
-             inversePrice - price of token1 on token0. eg:1 ETH = 3000USDC on usdc/eth pair
-              --notes: returning liq for positive tick is scaled to 18 but for negative scaled to 36 
-              to convert to realtime price for positive tick is scaledPrice/10**(decimal1-decimal0)
-                but for negative tick is scaledPrice/10**18
-             */
-             console.log("liquidity",liq); 
-            return (liq,scaleFactor);
+            let diff := sub(pb, pa)
+            let intermediate := div(mul(liq, diff), pa)
+            result := div(mul(intermediate, Q96), pb)
+        }
     }
 
+    /// @notice Calculate amount1 using liquidity, price A and price B
+    function calAmount1(uint liq, uint pa, uint pb) internal pure returns (uint result) {
+        uint Q96 = 2**96;
+        assembly {
+            if gt(pa, pb) {
+                let temp := pa
+                pa := pb
+                pb := temp
+            }
+
+            let diff := sub(pb, pa)
+            let numerator := mul(liq, diff)
+            result := div(numerator, Q96)
+        }
+    }
+
+    /// @notice Calculates effective liquidity and scale factor
+    /// @param liquidity raw Uniswap V3 liquidity
+    /// @param sa sqrtPrice at lower tick
+    /// @param sb sqrtPrice at upper tick
+    /// @param sp current sqrtPrice
+    /// @param isBaseZero whether base token is token0
+    /// @param isNegativeTick whether current tick is negative
+    function tickLiquidity(
+        uint128 liquidity,
+        uint160 sa,
+        uint160 sb,
+        uint160 sp,
+        bool isBaseZero,
+        bool isNegativeTick
+    ) internal pure returns (uint liq, uint160 scaleFactor) {
+        assembly {
+            // amount0 = liquidity * Q96 * (sb - sp) / sp / sb
+            let diff0 := sub(sb, sp)
+            let intermediate0 := mul(liquidity, diff0)
+            intermediate0 := div(mul(intermediate0, Q96), sp)
+            let amount0 := div(intermediate0, sb)
+
+            // amount1 = liquidity * (sp - sa) / Q96
+            let diff1 := sub(sp, sa)
+            let numerator1 := mul(liquidity, diff1)
+            let amount1 := div(numerator1, Q96)
+
+            // price = sp * sp / Q192 (default)
+            let price := div(mul(sp, sp), Q192)
+
+            // If tick is negative, price = sp * 1e18 * sp / Q192
+            switch isNegativeTick
+            case 1 {
+                price := div(mul(mul(sp, ONE_E18), sp), Q192)
+            }
+
+            // inversePrice = 1e36 / price (for negative), 1e18 / price (for positive)
+            let inversePrice := div(ONE_E18, price)
+            switch isNegativeTick
+            case 1 {
+                inversePrice := div(ONE_E36, price)
+            }
+
+            // Compute liquidity based on base token
+            switch isBaseZero
+            case 1 {
+                liq := add(mul(amount1, inversePrice), amount0)
+            }
+            default {
+                liq := add(mul(amount0, price), amount1)
+            }
+
+            // Scale factor
+            switch isNegativeTick
+            case 1 {
+                scaleFactor := 36
+            }
+            default {
+                scaleFactor := 18
+            }
+        }
+    }
 }
-
-
-
-
-
-
-
-
-
-
-
-

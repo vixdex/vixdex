@@ -29,7 +29,7 @@ contract VixTest is Test,Deployers {
         address deriveAsset;
         uint160 volume;
     }
-    address _bondingCurve = 0x132F7D9033b28B08cbc520e1cfD83c6dA3abfA36;
+    address _bondingCurve = 0x7314AEeC874A25A1131F49dA9679D05f8d931175;
     uint slope = 0.003 * 1e18;
     uint fee = 0.0003 * 1e18;
     uint basePrice = 0.1 * 1e18;
