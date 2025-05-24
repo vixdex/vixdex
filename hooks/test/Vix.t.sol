@@ -16,6 +16,10 @@ import {PoolKey} from "v4-core/src/types/PoolKey.sol";
 import {PoolSwapTest} from "v4-core/src/test/PoolSwapTest.sol";
 import {TickMath} from "v4-core/src/libraries/TickMath.sol";
 import {Vix} from "../src/Vix.sol";
+//neede to automatically deploy and get bytecode adn address of bonding curve
+import {HuffDeployer} from "foundry-huff/HuffDeployer.sol";
+
+
 contract VixTest is Test,Deployers {
     using CurrencyLibrary for Currency;
     using StateLibrary for IPoolManager;
@@ -29,7 +33,8 @@ contract VixTest is Test,Deployers {
         address deriveAsset;
         uint160 volume;
     }
-    address _bondingCurve = 0x7314AEeC874A25A1131F49dA9679D05f8d931175;
+    //changed this so the address is automatically added 
+    address _bondingCurve = HuffDeployer.deploy("BondingCurve");
     uint slope = 0.003 * 1e18;
     uint fee = 0.0003 * 1e18;
     uint basePrice = 0.1 * 1e18;

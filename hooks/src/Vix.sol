@@ -492,7 +492,7 @@ function calculateIv(address _poolAddress,uint160 volume) public view returns (u
         tick < 0
     );
     uint160 scaledDownFee = uint160(fee/1000);
-    uint160 iv =  volume.ivCalculation(uint160(liq),scaleFactor,scaledDownFee);
+    uint160 iv =  volume.ivCalculation(uint160(liq),scaleFactor,scaledDownFee,false);//added the isScaled boolean
     console.log("iv: ",iv);
     return iv;
 }
