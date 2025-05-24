@@ -26,36 +26,36 @@ library LiquidityConversion {
     }
 
     /// @notice Calculate amount0 using liquidity, price A and price B
-    function calAmount0(uint liq, uint pa, uint pb) internal pure returns (uint result) {
-        uint Q96 = 2**96;
-        assembly {
-            if gt(pa, pb) {
-                let temp := pa
-                pa := pb
-                pb := temp
-            }
+    // function calAmount0(uint liq, uint pa, uint pb) internal pure returns (uint result) {
+    //     uint Q96 = 2**96;
+    //     assembly {
+    //         if gt(pa, pb) {
+    //             let temp := pa
+    //             pa := pb
+    //             pb := temp
+    //         }
 
-            let diff := sub(pb, pa)
-            let intermediate := div(mul(liq, diff), pa)
-            result := div(mul(intermediate, Q96), pb)
-        }
-    }
+    //         let diff := sub(pb, pa)
+    //         let intermediate := div(mul(liq, diff), pa)
+    //         result := div(mul(intermediate, Q96), pb)
+    //     }
+    // }
 
-    /// @notice Calculate amount1 using liquidity, price A and price B
-    function calAmount1(uint liq, uint pa, uint pb) internal pure returns (uint result) {
-        uint Q96 = 2**96;
-        assembly {
-            if gt(pa, pb) {
-                let temp := pa
-                pa := pb
-                pb := temp
-            }
+    // /// @notice Calculate amount1 using liquidity, price A and price B
+    // function calAmount1(uint liq, uint pa, uint pb) internal pure returns (uint result) {
+    //     uint Q96 = 2**96;
+    //     assembly {
+    //         if gt(pa, pb) {
+    //             let temp := pa
+    //             pa := pb
+    //             pb := temp
+    //         }
 
-            let diff := sub(pb, pa)
-            let numerator := mul(liq, diff)
-            result := div(numerator, Q96)
-        }
-    }
+    //         let diff := sub(pb, pa)
+    //         let numerator := mul(liq, diff)
+    //         result := div(numerator, Q96)
+    //     }
+    // }
 
     /// @notice Calculates effective liquidity and scale factor
     /// @param liquidity raw Uniswap V3 liquidity
@@ -73,50 +73,58 @@ library LiquidityConversion {
         bool isNegativeTick
     ) internal pure returns (uint liq, uint160 scaleFactor) {
         assembly {
-            // amount0 = liquidity * Q96 * (sb - sp) / sp / sb
-            let diff0 := sub(sb, sp)
-            let intermediate0 := mul(liquidity, diff0)
-            intermediate0 := div(mul(intermediate0, Q96), sp)
-            let amount0 := div(intermediate0, sb)
+        // === amount0 = calAmount0(liquidity, sp, sb) ===
+        let a0 := sp
+        let b0 := sb
+        if gt(a0, b0) {
+            let temp := a0
+            a0 := b0
+            b0 := temp
+        }
+        let diff0 := sub(b0, a0)
+        let intermediate0 := div(mul(liquidity, diff0), a0)
+        let amount0 := div(mul(intermediate0, Q96), b0)
 
-            // amount1 = liquidity * (sp - sa) / Q96
-            let diff1 := sub(sp, sa)
-            let numerator1 := mul(liquidity, diff1)
-            let amount1 := div(numerator1, Q96)
+        // === amount1 = calAmount1(liquidity, sa, sp) ===
+        let a1 := sa
+        let b1 := sp
+        if gt(a1, b1) {
+            let temp := a1
+            a1 := b1
+            b1 := temp
+        }
+        let diff1 := sub(b1, a1)
+        let amount1 := div(mul(liquidity, diff1), Q96)
 
-            // price = sp * sp / Q192 (default)
-            let price := div(mul(sp, sp), Q192)
+        // === price = sp * sp / Q192 (adjusted if tick is negative) ===
+        let price := div(mul(sp, sp), Q192)
+        if iszero(iszero(isNegativeTick)) {
+            price := div(mul(mul(sp, ONE_E18), sp), Q192)
+        }
 
-            // If tick is negative, price = sp * 1e18 * sp / Q192
-            switch isNegativeTick
-            case 1 {
-                price := div(mul(mul(sp, ONE_E18), sp), Q192)
-            }
+        // === inversePrice = isNegativeTick ? ONE_E36 / price : ONE_E18 / price ===
+        let inversePrice := div(ONE_E18, price)
+        if iszero(iszero(isNegativeTick)) {
+            inversePrice := div(ONE_E36, price)
+        }
 
-            // inversePrice = 1e36 / price (for negative), 1e18 / price (for positive)
-            let inversePrice := div(ONE_E18, price)
-            switch isNegativeTick
-            case 1 {
-                inversePrice := div(ONE_E36, price)
-            }
+        // === liq = based on isBaseZero ===
+        switch isBaseZero
+        case 1 {
+            liq := add(div(mul(amount1, inversePrice), ONE_E18), amount0)
+        }
+        default {
+            liq := add(div(mul(amount0, price), ONE_E18), amount1)
+        }
 
-            // Compute liquidity based on base token
-            switch isBaseZero
-            case 1 {
-                liq := add(mul(amount1, inversePrice), amount0)
-            }
-            default {
-                liq := add(mul(amount0, price), amount1)
-            }
-
-            // Scale factor
-            switch isNegativeTick
-            case 1 {
-                scaleFactor := 36
-            }
-            default {
-                scaleFactor := 18
-            }
+        // === scaleFactor = isNegativeTick ? 36 : 18 ===
+        switch isNegativeTick
+        case 1 {
+            scaleFactor := 36
+        }
+        default {
+            scaleFactor := 18
         }
     }
-}
+    }
+    }
