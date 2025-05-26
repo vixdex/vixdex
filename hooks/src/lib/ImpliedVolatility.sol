@@ -19,8 +19,8 @@ library ImpliedVolatility {
         internal 
         pure 
         returns (uint160) 
-    {        uint160 ratio = (volume * 1e18)/ (tickLiquidity/(uint160(10)**scaleFactor)); // scaled to 18 decimals
-        uint160 sqrtRatio = sqrt(ratio); // scaled down to 9 decimals
+    {        uint160 ratio = (volume * 1e18)/ (tickLiquidity/(uint160(10)**scaleFactor)); // scaled down to 18 decimals
+        uint160 sqrtRatio = sqrt(ratio); // scaled down half to previous decimals, ratio is 18 decimals means it will 9
         
         return (2 * fee * sqrtRatio) ; // fee is alread scaled to 3 decimals  so to bring the correct scaled down value is value/1e12
     }

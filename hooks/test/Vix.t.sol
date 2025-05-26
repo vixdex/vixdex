@@ -24,12 +24,12 @@ contract VixTest is Test,Deployers {
     address public baseToken;
     address public deriveAsset;
     address[2] ivTokenAdd;
-    uint160 _volume = 898;
+    uint160 _volume = 67;
     struct HookData{
         address deriveAsset;
         uint160 volume;
     }
-    address _bondingCurve = 0x7314AEeC874A25A1131F49dA9679D05f8d931175;
+    address _bondingCurve = 0x9F95c870a4104603630CBEDBbbd56c6465Cc8A58;
     uint slope = 0.003 * 1e18;
     uint fee = 0.0003 * 1e18;
     uint basePrice = 0.1 * 1e18;
@@ -55,6 +55,7 @@ contract VixTest is Test,Deployers {
 
         uint160 tickLiquidity = 13401+4761696;
         uint160 fee = 0.003 * 1000;
+        deriveAsset = 0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599;
         (address[2] memory ivTokenAddresses) = hook.deploy2Currency(deriveAsset,["HIGH-IV-BTC","LOW-IV-BTC"],["HIVB","LIVB"],address(0xCBCdF9626bC03E24f779434178A73a0B4bad62eD),_volume,pairDeadline);
         ivTokenAdd = ivTokenAddresses;
         assertEq(MockERC20(ivTokenAdd[0]).balanceOf(address(manager)), MockERC20(ivTokenAdd[0]).totalSupply());

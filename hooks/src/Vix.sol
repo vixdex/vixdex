@@ -167,6 +167,7 @@ function _beforeAddLiquidity(address, PoolKey calldata, IPoolManager.ModifyLiqui
 function _beforeSwap(address sender,PoolKey calldata key,IPoolManager.SwapParams calldata params,bytes calldata data) internal override returns (bytes4, BeforeSwapDelta, uint24) {
     BeforeSwapDelta beforeSwapDelta;
     HookData memory hookData = abi.decode(data, (HookData));
+    console.log("derive asset: ",hookData.deriveAsset);
     bool isBaseZero = Currency.unwrap(key.currency0) == baseToken;
         uint256 amountInOutPositive = params.amountSpecified > 0
         ? uint256(params.amountSpecified)
@@ -223,7 +224,7 @@ function _afterSwap(address, PoolKey calldata, IPoolManager.SwapParams calldata,
     address _deriveAsset = hookData.deriveAsset;
     address _poolAddress = vixTokens[_deriveAsset].poolAddress;
     uint160 initialIv = vixTokens[_deriveAsset].initialIv;
-    uint160 iv = calculateIv(_poolAddress,hookData.volume);
+    uint160 iv = calculateIv(_poolAddress,hookData.volume,hookData.deriveAsset);
     if(vixTokens[_deriveAsset].reserve0 >0 && vixTokens[_deriveAsset].reserve1 >0){
         // when we deployed the vix, we take the iv, in after swap, i calc iv again and compare with initial IV
     // initial IV > current IV, reserve swap from high token to low token,
@@ -347,7 +348,7 @@ function deploy2Currency(address deriveToken, string[2] memory _tokenName, strin
             mintVixToken(address(this),address(v_token),IV_TOKEN_SUPPLY);
     }
 
-    uint160 initialIv = calculateIv(_poolAddress,volume);
+    uint160 initialIv = calculateIv(_poolAddress,volume,deriveToken);
     vixTokens[deriveToken] = VixTokenData(vixTokenAddresses[0],vixTokenAddresses[1],0,0,0,0,0,0,_poolAddress,initialIv);
     liquidateVixTokenToPm(IV_TOKEN_SUPPLY, vixTokenAddresses[0], vixTokenAddresses[1]);
     emit PairInitiated(deriveToken,vixTokenAddresses[0],vixTokenAddresses[1],block.timestamp,block.timestamp + deadline,initialIv);
@@ -463,7 +464,8 @@ function getVixData(address deriveAsset)public view returns (address vixHighToke
  * @return _iv it will return the iv.
  */
 
-function calculateIv(address _poolAddress,uint160 volume) public view returns (uint160 _iv){
+function calculateIv(address _poolAddress,uint160 volume,address deriveAsset) public view returns (uint160 _iv){
+    console.log("pool address: ",_poolAddress); 
    address poolAddress= _poolAddress;
    IUniswapV3Pool pool = IUniswapV3Pool(poolAddress);
     uint128 liquidity = pool.liquidity();
@@ -481,16 +483,19 @@ function calculateIv(address _poolAddress,uint160 volume) public view returns (u
     uint160 sa = TickMath.getSqrtRatioAtTick(bottomTick);
     uint160 sb = TickMath.getSqrtRatioAtTick(upperTick);
     uint160 sp = TickMath.getSqrtRatioAtTick(tick);
-
+ 
     // Call tickLiquidity with full args
+    bool isDeriveAsset0 = token0 == deriveAsset;
     (uint liq, uint160 scaleFactor) = LiquidityConversion.tickLiquidity(
         liquidity,
-        sa,
-        sb,
-        sp,
-        false,
+        sa, // bottom tick
+        sb, // top tick
+        sp, // current tick
+        isDeriveAsset0,
         tick < 0
     );
+    console.log("liquidity: ",liq);
+    console.log("scaleFactor: ",scaleFactor);
     uint160 scaledDownFee = uint160(fee/1000);
     uint160 iv =  volume.ivCalculation(uint160(liq),scaleFactor,scaledDownFee);
     console.log("iv: ",iv);
@@ -553,3 +558,6 @@ function vixTokensPrice(uint contractHoldings) public view returns(uint){
 
 }
 
+// derive token position will be act as isBaseZero in liquidityConversion.sol
+// we should support multiple fee in iv calculation
+// 

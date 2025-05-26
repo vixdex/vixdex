@@ -55,31 +55,33 @@ library LiquidityConversion {
             let numerator := mul(liq, diff)
             result := div(numerator, Q96)
         }
-    }
+    } 
 
     /// @notice Calculates effective liquidity and scale factor
     /// @param liquidity raw Uniswap V3 liquidity
     /// @param sa sqrtPrice at lower tick
     /// @param sb sqrtPrice at upper tick
     /// @param sp current sqrtPrice
-    /// @param isBaseZero whether base token is token0
+    /// @param isDeriveZero whether base token is token0
     /// @param isNegativeTick whether current tick is negative
+    // @returns it return liquidity and scale factor .. Note: liquidity is scaled to 18 decimals & with it decimal value for example BTC is 8 decimals means value is scaled to 18 decimals+8 decimals = 26 decimals
     function tickLiquidity(
         uint128 liquidity,
         uint160 sa,
         uint160 sb,
         uint160 sp,
-        bool isBaseZero,
+        bool isDeriveZero,
         bool isNegativeTick
     ) internal pure returns (uint liq, uint160 scaleFactor) {
+        console.log("isBaseZero",isDeriveZero);
         assembly {
-            // amount0 = liquidity * Q96 * (sb - sp) / sp / sb
+            // amount0 = ((liq * (pb - pa) / pa ) * Q96)/ pb
             let diff0 := sub(sb, sp)
             let intermediate0 := mul(liquidity, diff0)
             intermediate0 := div(mul(intermediate0, Q96), sp)
             let amount0 := div(intermediate0, sb)
 
-            // amount1 = liquidity * (sp - sa) / Q96
+            // amount1 = (liq * (pb - pa) / Q96)
             let diff1 := sub(sp, sa)
             let numerator1 := mul(liquidity, diff1)
             let amount1 := div(numerator1, Q96)
@@ -101,7 +103,7 @@ library LiquidityConversion {
             }
 
             // Compute liquidity based on base token
-            switch isBaseZero
+            switch isDeriveZero
             case 1 {
                 liq := add(mul(amount1, inversePrice), amount0)
             }
