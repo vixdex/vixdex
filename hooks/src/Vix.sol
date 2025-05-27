@@ -485,15 +485,17 @@ function calculateIv(address _poolAddress,uint160 volume,address deriveAsset) pu
     uint160 sp = TickMath.getSqrtRatioAtTick(tick);
  
     // Call tickLiquidity with full args
-    bool isDeriveAsset0 = token0 == deriveAsset;
-    (uint liq, uint160 scaleFactor) = LiquidityConversion.tickLiquidity(
+    (uint liq,uint amount0,uint amount1,uint160 scaleFactor) = LiquidityConversion.tickLiquidity(
         liquidity,
         sa, // bottom tick
         sb, // top tick
         sp, // current tick
-        isDeriveAsset0,
+        decimal0,
+        decimal1,
         tick < 0
     );
+    console.log("amount0: ",amount0);
+    console.log("amount1: ",amount1);
     console.log("liquidity: ",liq);
     console.log("scaleFactor: ",scaleFactor);
     uint160 scaledDownFee = uint160(fee/1000);

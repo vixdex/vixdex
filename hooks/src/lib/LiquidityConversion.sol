@@ -25,44 +25,14 @@ library LiquidityConversion {
         }
     }
 
-    /// @notice Calculate amount0 using liquidity, price A and price B
-    // function calAmount0(uint liq, uint pa, uint pb) internal pure returns (uint result) {
-    //     uint Q96 = 2**96;
-    //     assembly {
-    //         if gt(pa, pb) {
-    //             let temp := pa
-    //             pa := pb
-    //             pb := temp
-    //         }
+  
 
-    //         let diff := sub(pb, pa)
-    //         let intermediate := div(mul(liq, diff), pa)
-    //         result := div(mul(intermediate, Q96), pb)
-    //     }
-    // }
-
-    // /// @notice Calculate amount1 using liquidity, price A and price B
-    // function calAmount1(uint liq, uint pa, uint pb) internal pure returns (uint result) {
-    //     uint Q96 = 2**96;
-    //     assembly {
-    //         if gt(pa, pb) {
-    //             let temp := pa
-    //             pa := pb
-    //             pb := temp
-    //         }
-
-    //         let diff := sub(pb, pa)
-    //         let numerator := mul(liq, diff)
-    //         result := div(numerator, Q96)
-    //     }
-    // }
-
-    /// @notice Calculates effective liquidity and scale factor
     /// @param liquidity raw Uniswap V3 liquidity
     /// @param sa sqrtPrice at lower tick
     /// @param sb sqrtPrice at upper tick
     /// @param sp current sqrtPrice
-    /// @param isDeriveZero whether base token is token0
+    /// @param decimal0 decimal of token0
+    /// @param decimal1 decimal of token1
     /// @param isNegativeTick whether current tick is negative
     // @returns it return liquidity and scale factor .. Note: liquidity is scaled to 18 decimals & with it decimal value for example BTC is 8 decimals means value is scaled to 18 decimals+8 decimals = 26 decimals
     function tickLiquidity(
@@ -70,10 +40,10 @@ library LiquidityConversion {
         uint160 sa,
         uint160 sb,
         uint160 sp,
-        bool isDeriveZero,
+        uint8 decimal0,
+        uint8 decimal1,
         bool isNegativeTick
-    ) internal pure returns (uint liq, uint160 scaleFactor) {
-        console.log("isBaseZero",isDeriveZero);
+    ) internal pure returns (uint liq,uint amount0,uint amount1,uint160 scaleFactor) {
         assembly {
         // === amount0 = calAmount0(liquidity, sp, sb) ===
         let a0 := sp
@@ -85,7 +55,7 @@ library LiquidityConversion {
         }
         let diff0 := sub(b0, a0)
         let intermediate0 := div(mul(liquidity, diff0), a0)
-        let amount0 := div(mul(intermediate0, Q96), b0)
+        amount0 := div(mul(intermediate0, Q96), b0)
 
         // === amount1 = calAmount1(liquidity, sa, sp) ===
         let a1 := sa
@@ -96,36 +66,27 @@ library LiquidityConversion {
             b1 := temp
         }
         let diff1 := sub(b1, a1)
-        let amount1 := div(mul(liquidity, diff1), Q96)
+        amount1 := div(mul(liquidity, diff1), Q96)
 
         // === price = sp * sp / Q192 (adjusted if tick is negative) ===
         let price := div(mul(sp, sp), Q192)
-        if iszero(iszero(isNegativeTick)) {
+        if isNegativeTick {
             price := div(mul(mul(sp, ONE_E18), sp), Q192)
         }
 
-        // === inversePrice = isNegativeTick ? ONE_E36 / price : ONE_E18 / price ===
-        let inversePrice := div(ONE_E18, price)
-        if iszero(iszero(isNegativeTick)) {
-            inversePrice := div(ONE_E36, price)
-        }
-
-        // === liq = based on isBaseZero ===
-        switch isBaseZero
-        case 1 {
-            liq := add(div(mul(amount1, inversePrice), ONE_E18), amount0)
-        }
-        default {
-            liq := add(div(mul(amount0, price), ONE_E18), amount1)
+        // === tick liquidity ===
+        liq := add(mul(amount0, price), amount1)
+        if isNegativeTick{
+            liq := add(mul(amount0,price),mul(amount1, ONE_E18))
         }
 
         // === scaleFactor = isNegativeTick ? 36 : 18 ===
         switch isNegativeTick
         case 1 {
-            scaleFactor := 36
+            scaleFactor := add(18,decimal1)
         }
         default {
-            scaleFactor := 18
+            scaleFactor := decimal1
         }
     }
     }
