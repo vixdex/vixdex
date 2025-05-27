@@ -499,7 +499,7 @@ function calculateIv(address _poolAddress,uint160 volume,address deriveAsset) pu
     console.log("liquidity: ",liq);
     console.log("scaleFactor: ",scaleFactor);
     uint160 scaledDownFee = uint160(fee/1000);
-    uint160 iv =  volume.ivCalculation(uint160(liq),scaleFactor,scaledDownFee);
+    uint160 iv =  volume.ivCalculation(uint160(liq),scaleFactor,scaledDownFee,false);//added the isScaled boolean
     console.log("iv: ",iv);
     return iv;
 }

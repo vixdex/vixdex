@@ -1,6 +1,3 @@
-[submodule "hooks/lib/v3-core"]
-	path = hooks/lib/v3-core
-	url = https://github.com/uniswap/v3-core
 [submodule "hooks/lib/v3-periphery"]
 	path = hooks/lib/v3-periphery
 	url = https://github.com/uniswap/v3-periphery
@@ -10,3 +7,12 @@
 [submodule "hooks/lib/foundry-huff"]
 	path = hooks/lib/foundry-huff
 	url = https://github.com/huff-language/foundry-huff
+[submodule "hooks/lib/v3-core.git"]
+	path = hooks/lib/v3-core.git
+	url = https://github.com/Uniswap/v3-core.git
+[submodule "hooks/lib/v3-periphery.git"]
+	path = hooks/lib/v3-periphery.git
+	url = https://github.com/Uniswap/v3-periphery.git
+[submodule "hooks/lib/v3-core"]
+	path = hooks/lib/v3-core
+	url = https://github.com/uniswap/v3-core

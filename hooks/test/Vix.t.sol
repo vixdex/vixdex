@@ -16,6 +16,10 @@ import {PoolKey} from "v4-core/src/types/PoolKey.sol";
 import {PoolSwapTest} from "v4-core/src/test/PoolSwapTest.sol";
 import {TickMath} from "v4-core/src/libraries/TickMath.sol";
 import {Vix} from "../src/Vix.sol";
+//neede to automatically deploy and get bytecode adn address of bonding curve
+import {HuffDeployer} from "foundry-huff/HuffDeployer.sol";
+
+
 contract VixTest is Test,Deployers {
     using CurrencyLibrary for Currency;
     using StateLibrary for IPoolManager;
