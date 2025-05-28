@@ -54,9 +54,8 @@ contract Vix is BaseHook{
 
     // events
     event PairInitiated(address indexed _deriveToken, address indexed _vixHighToken, address indexed _vixLowToken,uint _initiatedTime ,uint256 _deadline,uint initiatedIV);
-    event PairExpired(address indexed deriveToken, address indexed vixHighToken, address indexed vixLowToken, uint initatedIV, uint expiredTime);
     event HookSwap(bytes32 indexed id, address indexed sender,int128 amount0,int128 amount1,uint128 hookLPfeeAmount0,uint128 hookLPfeeAmount1);
-
+    event AfterVPTSwap(address indexed poolAddress,uint iv,uint price0,uint price1,uint timeStamp);
 
     //libraris
     using CurrencyLibrary for Currency;
@@ -88,6 +87,8 @@ contract Vix is BaseHook{
         uint reserve1;
         address poolAddress;
         uint160 initialIv;
+        address deriveInitiator; // address that initiated the pair
+        uint earnings; // earnings of the derive initiator
     }
 
     struct HookData{
@@ -104,7 +105,11 @@ contract Vix is BaseHook{
     Currency currency0;
     Currency currency1;
     address sender;
+    bool isWithdraw;
     }
+    //
+    address public owner;
+    mapping(address => uint) public earnings;
     //Bonding curve contract
     IBondingCurve public bondingCurve;
 
@@ -115,6 +120,7 @@ contract Vix is BaseHook{
         FEE = fee;
         BASE_PRICE = basePrice;
         bondingCurve = IBondingCurve(_bondingCurve);
+        owner = msg.sender; // setting the owner of the contract
     }
 
 //getting Hook permission  
@@ -173,7 +179,7 @@ function _beforeSwap(address sender,PoolKey calldata key,IPoolManager.SwapParams
         ? uint256(params.amountSpecified)
         : uint256(-params.amountSpecified);
         
-
+    bytes32 id = keccak256(abi.encode(key)); // using keecak256 to generate bytes32 id for key
     if(isBaseZero){ 
         // for Buy(ZeroForOneSwap) -> only  exactOut - costOfPurchase function will be called
         // for Sell(OneForZeroSwap) -> only exactIn - costOfSell function will be called
@@ -185,6 +191,8 @@ function _beforeSwap(address sender,PoolKey calldata key,IPoolManager.SwapParams
             // buy token function will call
             (int128 _deltaSpecified, int128 _deltaUnspecified) =buyOperator(key, amountInOutPositive, isBaseZero, hookData.deriveAsset);
             beforeSwapDelta = toBeforeSwapDelta(_deltaSpecified, _deltaUnspecified);
+            //here specified amount is token1 that mean exact out!.
+            emit HookSwap(id, sender, _deltaUnspecified,_deltaSpecified,0, 0);
 
         }else{
             //reverting if the swap is exactOut
@@ -192,6 +200,7 @@ function _beforeSwap(address sender,PoolKey calldata key,IPoolManager.SwapParams
             // sell token function will call
             (int128 _deltaSpecified, int128 _deltaUnspecified) = sellOperator(key, amountInOutPositive, isBaseZero, hookData.deriveAsset);
             beforeSwapDelta = toBeforeSwapDelta(_deltaSpecified, _deltaUnspecified);
+            emit HookSwap(id, sender, _deltaUnspecified,_deltaSpecified,0, 0);
         }
         
     }else{
@@ -204,6 +213,7 @@ function _beforeSwap(address sender,PoolKey calldata key,IPoolManager.SwapParams
             // sell token function will call
             (int128 _deltaSpecified, int128 _deltaUnspecified) = sellOperator(key, amountInOutPositive, isBaseZero, hookData.deriveAsset);
             beforeSwapDelta = toBeforeSwapDelta(_deltaSpecified, _deltaUnspecified);
+            emit HookSwap(id, sender,_deltaSpecified,_deltaUnspecified,0, 0);          
 
         }else{
             //reverting if the swap is exactIn
@@ -211,6 +221,7 @@ function _beforeSwap(address sender,PoolKey calldata key,IPoolManager.SwapParams
             // buy token function will call
             (int128 _deltaSpecified, int128 _deltaUnspecified) = buyOperator(key, amountInOutPositive, isBaseZero, hookData.deriveAsset);
             beforeSwapDelta = toBeforeSwapDelta(_deltaSpecified, _deltaUnspecified);
+            emit HookSwap(id, sender,_deltaSpecified,_deltaUnspecified,0, 0);
 
         }
     }
@@ -233,8 +244,20 @@ function _afterSwap(address, PoolKey calldata, IPoolManager.SwapParams calldata,
         (uint reserveShift,uint tokenBurn) =  swapReserve(initialIv,iv,vixTokens[_deriveAsset].reserve0,vixTokens[_deriveAsset].reserve1,vixTokens[_deriveAsset].circulation0,vixTokens[_deriveAsset].circulation1,_deriveAsset);
         console.log("reserve shift: ",reserveShift);
         console.log("token burn: ",tokenBurn);
+ 
 
     }
+    console.log("contract holding0: ",vixTokens[_deriveAsset].contractHoldings0);
+    console.log("contract holding1: ",vixTokens[_deriveAsset].contractHoldings1);
+    // after swap event
+           emit AfterVPTSwap(
+            _poolAddress,
+            iv,
+            bondingCurve.settingPrice(SLOPE,(vixTokens[_deriveAsset].contractHoldings0/1e18), BASE_PRICE),
+            bondingCurve.settingPrice(SLOPE,(vixTokens[_deriveAsset].contractHoldings1/1e18), BASE_PRICE),
+            block.timestamp
+        );
+    
     return(this.afterSwap.selector,0);
 }
 
@@ -253,12 +276,20 @@ function sellOperator(PoolKey calldata key,uint amount,bool zeroIsBase,address _
 }
 
 function buyHighToken(PoolKey calldata key,VixTokenData storage vixTokenData,uint256 amountInOutPositive,bool zeroIsBase) private returns (int128, int128) {
-    uint256 cost = bondingCurve.costOfPurchasingToken(SLOPE,vixTokenData.circulation0,amountInOutPositive,BASE_PRICE,FEE);
+    uint256 purchaseToken = amountInOutPositive/1e18;
+    require(purchaseToken > 0, "amount should be greater than 0");
+    uint contractHoldings = vixTokenData.contractHoldings0/1e18;
+    uint256 curveCost = bondingCurve.costOfPurchasingToken(SLOPE,contractHoldings,purchaseToken,BASE_PRICE);
+    uint fees = (curveCost * FEE) / 1e18;
+    uint256 cost = curveCost+fees;
+    earnings[owner] += fees/2; // owner will get the fees
+    vixTokenData.earnings += fees/2; // derive initiator will get the fees
+
    unchecked {
      vixTokenData.contractHoldings0 += amountInOutPositive;
     vixTokenData.circulation0 += amountInOutPositive;
     vixTokenData.reserve0 += cost;
-   }
+   }  
     if(zeroIsBase){
         key.currency0.take(poolManager, address(this), cost, true);
         key.currency1.settle(poolManager, address(this), amountInOutPositive, true);
@@ -270,10 +301,19 @@ function buyHighToken(PoolKey calldata key,VixTokenData storage vixTokenData,uin
 }
 
 function buyLowToken(PoolKey calldata key,VixTokenData storage vixTokenData,uint256 amountInOutPositive,bool zeroIsBase) private returns (int128, int128) {
-    uint256 cost = bondingCurve.costOfPurchasingToken(SLOPE,vixTokenData.circulation1,amountInOutPositive,BASE_PRICE,FEE);
+    uint256 purchaseToken = amountInOutPositive/1e18;
+    require(purchaseToken > 0, "amount should be greater than 0");
+    uint contractHoldings = vixTokenData.contractHoldings1/1e18;
+    uint256 curveCost = bondingCurve.costOfPurchasingToken(SLOPE,contractHoldings,purchaseToken,BASE_PRICE);
+    uint fees = (curveCost * FEE) / 1e18;
+    uint256 cost = curveCost+fees;
+    earnings[owner] += (fees/2); // owner will get the fees
+    vixTokenData.earnings += (fees/2); // derive initiator will get the fees
+    unchecked {
     vixTokenData.contractHoldings1 += amountInOutPositive;
     vixTokenData.circulation1 += amountInOutPositive;
     vixTokenData.reserve1 += cost;
+    }
     if(zeroIsBase){
         key.currency0.take(poolManager, address(this), cost, true);
         key.currency1.settle(poolManager, address(this), amountInOutPositive, true);
@@ -285,10 +325,18 @@ function buyLowToken(PoolKey calldata key,VixTokenData storage vixTokenData,uint
 }
 
 function sellHighToken(PoolKey calldata key,VixTokenData storage vixTokenData,uint256 amountInOutPositive,bool zeroIsBase) private returns (int128, int128) {
-   uint256 baseToken_returns = bondingCurve.costOfSellingToken(SLOPE,vixTokenData.circulation0,amountInOutPositive,BASE_PRICE, FEE);
+    uint256 salesToken = amountInOutPositive/1e18;
+    require(salesToken > 0, "amount should be greater than 0");
+    uint contractHoldings = vixTokenData.contractHoldings0/1e18;
+    uint256 curveCost = bondingCurve.costOfSellingToken(SLOPE,contractHoldings,salesToken,BASE_PRICE);
+    uint fees = (curveCost * FEE) / 1e18;
+    uint256 baseToken_returns = curveCost - ((curveCost * FEE) / 1e18);
+    earnings[owner] += fees;
+    unchecked {
     vixTokenData.contractHoldings0 -= amountInOutPositive;
     vixTokenData.circulation0 -= amountInOutPositive;
     vixTokenData.reserve0 -= baseToken_returns;
+    }
     if(zeroIsBase){
         key.currency0.settle(poolManager, address(this),baseToken_returns, true);
         key.currency1.take(poolManager, address(this), amountInOutPositive, true);
@@ -300,10 +348,18 @@ function sellHighToken(PoolKey calldata key,VixTokenData storage vixTokenData,ui
 }
 
 function sellLowToken(PoolKey calldata key,VixTokenData storage vixTokenData,uint256 amountInOutPositive,bool zeroIsBase) private returns (int128, int128) {
-    uint256 baseToken_returns = bondingCurve.costOfSellingToken(SLOPE,vixTokenData.circulation1,amountInOutPositive,BASE_PRICE, FEE);
-    vixTokenData.contractHoldings1 -= amountInOutPositive;
-    vixTokenData.circulation1 -= amountInOutPositive;
-    vixTokenData.reserve1 -= baseToken_returns;
+    uint256 salesToken = amountInOutPositive/1e18;
+    require(salesToken > 0, "amount should be greater than 0");
+    uint contractHoldings = vixTokenData.contractHoldings1/1e18;
+    uint256 curveCost = bondingCurve.costOfSellingToken(SLOPE,contractHoldings,amountInOutPositive,BASE_PRICE);
+    uint fees = (curveCost * FEE) / 1e18;
+    uint256 baseToken_returns = curveCost - ((curveCost * FEE) / 1e18);
+    earnings[owner] += fees;
+    unchecked {
+            vixTokenData.contractHoldings1 -= amountInOutPositive;
+            vixTokenData.circulation1 -= amountInOutPositive;
+            vixTokenData.reserve1 -= baseToken_returns;
+    }
     if(zeroIsBase){
         key.currency0.settle(poolManager, address(this),baseToken_returns, true);
         key.currency1.take(poolManager, address(this), amountInOutPositive, true);
@@ -314,10 +370,46 @@ function sellLowToken(PoolKey calldata key,VixTokenData storage vixTokenData,uin
     return (int128(uint128(amountInOutPositive)), -int128(uint128(baseToken_returns)));
 }
 
+function withdrawEarningsForOwner() public {
+    require(owner == msg.sender,"Not authorized to withdraw earnings");
+    uint256 amountEarned = earnings[msg.sender];
+    require(amountEarned > 0, "No earnings to withdraw");
+    earnings[msg.sender] = 0; // State change before external call
+    Currency base = Currency.wrap(baseToken); 
+    console.log("amount earned for owner: ",amountEarned);
+        poolManager.unlock(
+        abi.encode(
+            CallbackData(
+                amountEarned,
+                base,
+                base,
+                msg.sender,
+                true
+            )
+        )
+    );
+    
+}
 
-
-
-
+function withdrawEarningsForInitiator(address _deriveAsset) public {
+    VixTokenData storage vixTokenData = vixTokens[_deriveAsset];
+    require(vixTokenData.deriveInitiator == msg.sender,"Not authorized to withdraw earnings");
+    uint256 amountEarned = vixTokenData.earnings;
+    require(amountEarned > 0, "No earnings to withdraw");
+    vixTokenData.earnings = 0; // State change before external call
+    Currency base = Currency.wrap(baseToken); 
+        poolManager.unlock(
+        abi.encode(
+            CallbackData(
+                amountEarned,
+                base,
+                base,
+                msg.sender,
+                true
+            )
+        )
+    );
+}
 
 
 
@@ -341,15 +433,13 @@ function deploy2Currency(address deriveToken, string[2] memory _tokenName, strin
     pairEndingTime[deriveToken] = block.timestamp + deadline;
     address[2] memory vixTokenAddresses;
     for(uint i = 0; i < 2; i++){
-            uint twentyFourHours = 3600 * 24;
-
-            VolatileERC20 v_token = new VolatileERC20(_tokenName[i], _tokenSymbol[i],twentyFourHours);
+            VolatileERC20 v_token = new VolatileERC20(_tokenName[i], _tokenSymbol[i]);
             vixTokenAddresses[i] = address(v_token);
             mintVixToken(address(this),address(v_token),IV_TOKEN_SUPPLY);
     }
 
     uint160 initialIv = calculateIv(_poolAddress,volume,deriveToken);
-    vixTokens[deriveToken] = VixTokenData(vixTokenAddresses[0],vixTokenAddresses[1],0,0,0,0,0,0,_poolAddress,initialIv);
+    vixTokens[deriveToken] = VixTokenData(vixTokenAddresses[0],vixTokenAddresses[1],0,0,0,0,0,0,_poolAddress,initialIv,msg.sender,0);
     liquidateVixTokenToPm(IV_TOKEN_SUPPLY, vixTokenAddresses[0], vixTokenAddresses[1]);
     emit PairInitiated(deriveToken,vixTokenAddresses[0],vixTokenAddresses[1],block.timestamp,block.timestamp + deadline,initialIv);
     return (vixTokenAddresses);
@@ -373,7 +463,8 @@ function liquidateVixTokenToPm(uint256 amountEach, address currency0, address cu
                 amountEach, 
                 Currency.wrap(currency0),
                 Currency.wrap(currency1),
-               address(this)
+               address(this),
+               false
             )
         )
     );
@@ -390,7 +481,11 @@ function liquidateVixTokenToPm(uint256 amountEach, address currency0, address cu
 
 function unlockCallback(bytes calldata data) external onlyPoolManager returns (bytes memory) {
     CallbackData memory callbackData = abi.decode(data, (CallbackData));
-	callbackData.currency0.settle(
+    if(callbackData.isWithdraw){
+        callbackData.currency0.settle(poolManager,address(this),callbackData.amountEach,true);
+        callbackData.currency0.take(poolManager,callbackData.sender,callbackData.amountEach,false);
+    }else{
+        	callbackData.currency0.settle(
             poolManager,
             callbackData.sender,
             callbackData.amountEach,
@@ -415,6 +510,7 @@ function unlockCallback(bytes calldata data) external onlyPoolManager returns (b
             callbackData.amountEach,
             true
     );
+    }
 	return "";
 }
 
@@ -424,32 +520,7 @@ function mintVixToken(address to,address _token,uint _amount) internal returns (
     return true;
 }
 
-/**
- * @dev Resets a token pair if the existing pair has expired. Deploys new currency tokens
- *      and assigns them to the provided deriveToken address.
- *
- * @param deriveToken The address of the token for which the pair is being reset.
- * @param deadline The new expiration deadline for the pair.
- *
- * @return address[2] memory Returns the addresses of the newly deployed currency tokens.
- */
 
-function resetPair(address deriveToken,uint deadline,address _poolAddress,uint160 volume) public returns (address[2] memory) {
-    require(isPairInitiated[deriveToken] == true,"Pair not initiated");
-    if(pairEndingTime[deriveToken] < block.timestamp){
-
-            address VHT = vixTokens[deriveToken].vixHighToken;
-            address VLT = vixTokens[deriveToken].vixLowToken;
-            VolatileERC20 VHTContract = VolatileERC20(VHT);
-            VolatileERC20 VLTContract = VolatileERC20(VLT);
-
-            (address[2] memory vixAdd)  = deploy2Currency(deriveToken,[VHTContract.name(),VLTContract.name()],[VHTContract.symbol(),VLTContract.symbol()],_poolAddress,volume ,deadline);
-            emit PairExpired(deriveToken,VHT,VLT,vixTokens[deriveToken].initialIv,block.timestamp);
-            return vixAdd;
-    }else{
-            revert("Pair not expired");
-    }
-}
 
 function getVixData(address deriveAsset)public view returns (address vixHighToken,address _vixLowToken,uint _circulation0,uint _circulation1,uint _contractHoldings0,uint _contractHoldings1,uint _reserve0,uint _reserve1,address _poolAddress){
      VixTokenData memory vixTokenData = vixTokens[deriveAsset];
@@ -498,7 +569,7 @@ function calculateIv(address _poolAddress,uint160 volume,address deriveAsset) pu
     console.log("amount1: ",amount1);
     console.log("liquidity: ",liq);
     console.log("scaleFactor: ",scaleFactor);
-    uint160 scaledDownFee = uint160(fee/1000);
+    uint160 scaledDownFee = uint160(fee);
     uint160 iv =  volume.ivCalculation(uint160(liq),scaleFactor,scaledDownFee,false);//added the isScaled boolean
     console.log("iv: ",iv);
     return iv;

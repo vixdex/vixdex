@@ -8,7 +8,6 @@ import {ERC20} from  "openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
  */
 contract VolatileERC20 is ERC20{
     address public owner;
-    uint public tokenExpiry;
  
 
     /**
@@ -23,11 +22,9 @@ contract VolatileERC20 is ERC20{
      * @notice Initializes the contract setting the token name and symbol, the owner of the contract and the token expiry date.
      * @param _name The name of the token
      * @param _symbol The symbol of the token
-     * @param deadline The timestamp at which the token is no longer valid
      */
-    constructor(string memory _name,string memory _symbol, uint deadline) ERC20(_name, _symbol) {
+    constructor(string memory _name,string memory _symbol) ERC20(_name, _symbol) {
         owner = msg.sender;
-        tokenExpiry = block.timestamp + deadline;
     }
 
     /**
@@ -36,7 +33,6 @@ contract VolatileERC20 is ERC20{
      * @param value The amount of tokens to mint
      */
     function mint(address to, uint256 value)public  onlyOwner() {
-        require(block.timestamp < tokenExpiry, "TOKEN EXPIRED, MINTING CLOSED");
         _mint(to, value);
        
     }
@@ -47,20 +43,9 @@ contract VolatileERC20 is ERC20{
      * @param value The amount of tokens to mint or transfer
      */
     function _update(address from, address to, uint256 value) internal override {
-        require(block.timestamp < tokenExpiry, "TOKEN EXPIRED, MINTING CLOSED");
         super._update(from, to, value);
     }
 
     
 }
 
-/* 
-
-BTC - $100K ->  99-98-97
--> LOW-VOL-BTC -> 0.05$ -> 10$
--> HIGH-VOL-BTC -> 0.05$ ->  $0.0001
-
--> swap in uniswap -> 100K -> 0.8BTC
--> swap in vixDex.finance -> 0.2 BTC -> HIGH-VOL-BTC
-
-*/

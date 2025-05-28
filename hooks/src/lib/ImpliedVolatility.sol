@@ -28,11 +28,12 @@ library ImpliedVolatility {
         if (isScaled) {
             // Values are already scaled, use them directly
             ratio = volume / tickLiquidity;
-        } else {
+        }else {
             // Apply scaling to the calculation
-            ratio = (volume * 1e18) / (tickLiquidity / (uint160(10) ** scaleFactor));
+            uint160 scaleDownTickLiquidity = tickLiquidity / (uint160(10) ** scaleFactor);
+            require(scaleDownTickLiquidity > 0, "tickLiquidity must be greater than zero");
+            ratio = (volume * 1e18) / scaleDownTickLiquidity; // Scale volume to 18 decimals);
         }
-        
         uint256 sqrtResult = sqrt(ratio);
         
         // Safety check for uint160 overflow

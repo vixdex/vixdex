@@ -1,7 +1,7 @@
 //interfaces
 #define function settingPrice(uint256,uint256,uint256) nonpayable returns (uint256)
-#define function costOfPurchasingToken(uint256,uint256,uint256,uint256,uint256) nonpayable returns (uint256)
-#define function costOfSellingToken(uint256,uint256, uint256, uint256,uint256) nonpayable returns (uint256)
+#define function costOfPurchasingToken(uint256,uint256,uint256,uint256) nonpayable returns (uint256)
+#define function costOfSellingToken(uint256,uint256, uint256, uint256) nonpayable returns (uint256)
 
 
 #define macro SETTING_PRICE() = takes(0) returns(0) {
@@ -56,8 +56,6 @@
     add                    // term1 + term2   || [term1+term2]
     0x40 mload            // term3
     add                    // finalCost = term1 + term2 + term3 || [finalCost]
-    0x84 calldataload      // fee            || [fee, finalCost]
-    add                    // finalCost + fee || [finalCost + fee]
     // Store final result with fee at memory location 0x60
     0x60 mstore
 
@@ -98,8 +96,6 @@
     swap1 sub                    // term1 - term2   || [term1-term2]
     0x40 mload            // term3|| [term3, term1-term2]
     add                    // finalCost = term1 - term2 + term3 || [finalCost]
-    0x84 calldataload      // fee            || [finalCost,fee]
-    swap1 sub                    // finalCost - fee || [finalCost - fee]
     // Store final result with fee at memory location 0x60
     0x60 mstore
     // Return the result
@@ -112,9 +108,9 @@
     0xe0 shr // Shift right by 224 bits to get the first 4 bytes || stack : [function selector]
     dup1 __FUNC_SIG("settingPrice(uint256,uint256,uint256)") eq // Compare with the function selector for settingPrice || stack : [1 OR 0]
     setPrice jumpi // If it is settingPrice(), jump to setPrice -> it will check the stack is 0 or 1 , if 1 jump to setPrice
-    dup1 __FUNC_SIG("costOfPurchasingToken(uint256,uint256,uint256,uint256,uint256)") eq // Compare with the function selector for costOfPurchasingToken || stack : [1 OR 0]
+    dup1 __FUNC_SIG("costOfPurchasingToken(uint256,uint256,uint256,uint256)") eq // Compare with the function selector for costOfPurchasingToken || stack : [1 OR 0]
     costOfPurchasing jumpi // If it is costOfPurchasingToken(), jump to costOfPurchasingToken -> it will check the stack is 0 or 1 , if 1 jump to costOfPurchasingToken
-    dup1 __FUNC_SIG("costOfSellingToken(uint256,uint256,uint256,uint256,uint256)") eq // Compare with the function selector for costOfSellingToken || stack : [1 OR 0]
+    dup1 __FUNC_SIG("costOfSellingToken(uint256,uint256,uint256,uint256)") eq // Compare with the function selector for costOfSellingToken || stack : [1 OR 0]
     costOfSelling jumpi // If it is costOfSellingToken(), jump to costOfSellingToken -> it will check the stack is 0 or 1 , if 1 jump to costOfSellingToken
     
     setPrice:

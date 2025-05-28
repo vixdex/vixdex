@@ -27,7 +27,7 @@ function testCostOfPurchasingToken() public {
     uint purchaseToken = 500;
     uint basePrice = 100000000000000000;
     uint fee = 300000000000000;
-    uint cost = curve.costOfPurchasingToken(slope, circulation, purchaseToken, basePrice,fee);
+    uint cost = curve.costOfPurchasingToken(slope, circulation, purchaseToken, basePrice);
     console.log("Cost of purchasing token is:", cost);
     console.log("Gas used:", gasStart - gasleft());
 }
@@ -38,7 +38,7 @@ function testCostOfSellingToken() public {
     uint sellToken = 500;
     uint basePrice = 0.1 * 1e18;
     uint fee = 0.0003 * 1e18;
-    uint cost = curve.costOfSellingToken(slope, circulation, sellToken, basePrice,fee);
+    uint cost = curve.costOfSellingToken(slope, circulation, sellToken, basePrice);
     console.log("Cost of selling token is:", cost);
 }
 }
