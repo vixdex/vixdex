@@ -26,11 +26,11 @@ contract VixTest is Test,Deployers {
 
     Vix hook;
     address public baseToken;
-    address public deriveAsset;
+    address public poolAdd;
     address[2] ivTokenAdd;
     uint160 _volume = 67;
     struct HookData{
-        address deriveAsset;
+        address poolAdd;
         uint160 volume;
     }
     address _bondingCurve = 0x512F94E0a875516da53e2e59aC1995d6B2fbF781;
@@ -43,7 +43,7 @@ contract VixTest is Test,Deployers {
         (currency0, currency1) = deployMintAndApprove2Currencies();   
         console.log("_baseTokenCurrency: ",Currency.unwrap(currency0));
         baseToken = address(Currency.unwrap(currency0));
-        deriveAsset = address(Currency.unwrap(currency1));
+        poolAdd = address(Currency.unwrap(currency1));
         address hookAddress = address(
             uint160(
                     Hooks.BEFORE_ADD_LIQUIDITY_FLAG |
@@ -58,8 +58,8 @@ contract VixTest is Test,Deployers {
         uint256 pairDeadline =(3600*24);
 
         uint160 tickLiquidity = 13401+4761696;
-        deriveAsset = 0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599;
-        (address[2] memory ivTokenAddresses) = hook.deploy2Currency(deriveAsset,["HIGH-IV-BTC","LOW-IV-BTC"],["HIVB","LIVB"],address(0xCBCdF9626bC03E24f779434178A73a0B4bad62eD),_volume,pairDeadline);
+        poolAdd = 0xCBCdF9626bC03E24f779434178A73a0B4bad62eD;
+        (address[2] memory ivTokenAddresses) = hook.deploy2Currency(poolAdd,["HIGH-IV-BTC","LOW-IV-BTC"],["HIVB","LIVB"],poolAdd,_volume,pairDeadline);
         ivTokenAdd = ivTokenAddresses;
         assertEq(MockERC20(ivTokenAdd[0]).balanceOf(address(manager)), MockERC20(ivTokenAdd[0]).totalSupply());
         assertEq(MockERC20(ivTokenAdd[1]).balanceOf(address(manager)), MockERC20(ivTokenAdd[1]).totalSupply());
@@ -108,7 +108,7 @@ contract VixTest is Test,Deployers {
         console.log("balanceOf high vix token before buying:",MockERC20(ivTokenAdd[0]).balanceOf(address(this)));
         uint baseTokenBalance = MockERC20(baseToken).balanceOf(address(this));
         console.log("base token balance before buying:",baseTokenBalance);
-        bytes memory hookData =  abi.encode(HookData(deriveAsset, _volume));
+        bytes memory hookData =  abi.encode(HookData(poolAdd, _volume));
        // uint gasStart = gasleft();
         swapRouter.swap(
             key,
@@ -143,7 +143,7 @@ contract VixTest is Test,Deployers {
         console.log("base token balance after sold vix tokens:",MockERC20(baseToken).balanceOf(address(this)));
         console.log("balance of base token in pool manager: ",MockERC20(baseToken).balanceOf(address(manager)));
         hook.withdrawEarningsForOwner();
-        hook.withdrawEarningsForInitiator(deriveAsset);
+        hook.withdrawEarningsForInitiator(poolAdd);
         console.log("balance of base token in pool manager: ",MockERC20(baseToken).balanceOf(address(manager)));
         console.log("balance of base token in hook: ",MockERC20(baseToken).balanceOf(address(hook)));
         console.log("balance of base token in this contract: ",MockERC20(baseToken).balanceOf(address(this)));
@@ -173,7 +173,7 @@ contract VixTest is Test,Deployers {
     //     console.log("balanceOf high vix token before buying:",MockERC20(ivTokenAdd[1]).balanceOf(address(this)));
     //     uint baseTokenBalance = MockERC20(baseToken).balanceOf(address(this));
     //     console.log("base token balance before buying:",baseTokenBalance);
-    //     bytes memory hookData =  abi.encode(HookData(deriveAsset, _volume));
+    //     bytes memory hookData =  abi.encode(HookData(poolAdd, _volume));
 
     //     swapRouter.swap(
     //         key,
@@ -226,7 +226,7 @@ contract VixTest is Test,Deployers {
 //         settleUsingBurn: false
 //     });
 
-//     bytes memory hookData = abi.encode(HookData(deriveAsset, _volume));
+//     bytes memory hookData = abi.encode(HookData(poolAdd, _volume));
 
 //          swapRouter.swap(
 //             key,
@@ -277,7 +277,7 @@ contract VixTest is Test,Deployers {
 //         uint reserve0, 
 //         uint reserve1, 
 //         address poolAddress
-//     ) = hook.getVixData(deriveAsset);
+//     ) = hook.getVixData(poolAdd);
 
 //     // Logging reserves and circulation data
 //     console.log("Reserve0:", reserve0);
@@ -293,7 +293,7 @@ contract VixTest is Test,Deployers {
 //         20930878980, 21930878980, 
 //         reserve0, reserve1, 
 //         circulation0, circulation1, 
-//         deriveAsset
+//         poolAdd
 //     );
 
 //     // Logging swap results
@@ -318,7 +318,7 @@ contract VixTest is Test,Deployers {
 //         reserve0, 
 //         reserve1, 
 //         poolAddress
-//     ) = hook.getVixData(deriveAsset);
+//     ) = hook.getVixData(poolAdd);
 
 //     // Logging updated reserves and circulation data
 //     console.log("Updated Reserve0:", reserve0);
@@ -337,11 +337,11 @@ contract VixTest is Test,Deployers {
 //         uint deadline = 3600 * 24;
 //         console.log("block timestamp: ",block.timestamp);
 //         vm.expectRevert();
-//         hook.resetPair(deriveAsset, deadline,0xCBCdF9626bC03E24f779434178A73a0B4bad62eD,_volume);
+//         hook.resetPair(poolAdd, deadline,0xCBCdF9626bC03E24f779434178A73a0B4bad62eD,_volume);
 //         //expect revert when transfering token after deadline
 //         vm.warp(block.timestamp + 30 hours);
 //         console.log("block timestamp: ",block.timestamp);
-//         hook.resetPair(deriveAsset, deadline,0xCBCdF9626bC03E24f779434178A73a0B4bad62eD,_volume); 
+//         hook.resetPair(poolAdd, deadline,0xCBCdF9626bC03E24f779434178A73a0B4bad62eD,_volume); 
 //     }
     
     

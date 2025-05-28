@@ -92,7 +92,7 @@ contract Vix is BaseHook{
     }
 
     struct HookData{
-        address deriveAsset;
+        address poolAdd;
         uint160 volume;
     }
 
@@ -173,7 +173,7 @@ function _beforeAddLiquidity(address, PoolKey calldata, IPoolManager.ModifyLiqui
 function _beforeSwap(address sender,PoolKey calldata key,IPoolManager.SwapParams calldata params,bytes calldata data) internal override returns (bytes4, BeforeSwapDelta, uint24) {
     BeforeSwapDelta beforeSwapDelta;
     HookData memory hookData = abi.decode(data, (HookData));
-    console.log("derive asset: ",hookData.deriveAsset);
+    console.log("pool address: ",hookData.poolAdd);
     bool isBaseZero = Currency.unwrap(key.currency0) == baseToken;
         uint256 amountInOutPositive = params.amountSpecified > 0
         ? uint256(params.amountSpecified)
@@ -189,7 +189,7 @@ function _beforeSwap(address sender,PoolKey calldata key,IPoolManager.SwapParams
             //reverting if the swap is exactIn
             require(params.amountSpecified > 0, "exactIn not allowed");
             // buy token function will call
-            (int128 _deltaSpecified, int128 _deltaUnspecified) =buyOperator(key, amountInOutPositive, isBaseZero, hookData.deriveAsset);
+            (int128 _deltaSpecified, int128 _deltaUnspecified) =buyOperator(key, amountInOutPositive, isBaseZero, hookData.poolAdd);
             beforeSwapDelta = toBeforeSwapDelta(_deltaSpecified, _deltaUnspecified);
             //here specified amount is token1 that mean exact out!.
             emit HookSwap(id, sender, _deltaUnspecified,_deltaSpecified,0, 0);
@@ -198,7 +198,7 @@ function _beforeSwap(address sender,PoolKey calldata key,IPoolManager.SwapParams
             //reverting if the swap is exactOut
             require(params.amountSpecified < 0, "exactOut not allowed");
             // sell token function will call
-            (int128 _deltaSpecified, int128 _deltaUnspecified) = sellOperator(key, amountInOutPositive, isBaseZero, hookData.deriveAsset);
+            (int128 _deltaSpecified, int128 _deltaUnspecified) = sellOperator(key, amountInOutPositive, isBaseZero, hookData.poolAdd);
             beforeSwapDelta = toBeforeSwapDelta(_deltaSpecified, _deltaUnspecified);
             emit HookSwap(id, sender, _deltaUnspecified,_deltaSpecified,0, 0);
         }
@@ -211,7 +211,7 @@ function _beforeSwap(address sender,PoolKey calldata key,IPoolManager.SwapParams
             //reverting if the swap is exactOut
             require(params.amountSpecified < 0, "exactOut not allowed");
             // sell token function will call
-            (int128 _deltaSpecified, int128 _deltaUnspecified) = sellOperator(key, amountInOutPositive, isBaseZero, hookData.deriveAsset);
+            (int128 _deltaSpecified, int128 _deltaUnspecified) = sellOperator(key, amountInOutPositive, isBaseZero, hookData.poolAdd);
             beforeSwapDelta = toBeforeSwapDelta(_deltaSpecified, _deltaUnspecified);
             emit HookSwap(id, sender,_deltaSpecified,_deltaUnspecified,0, 0);          
 
@@ -219,7 +219,7 @@ function _beforeSwap(address sender,PoolKey calldata key,IPoolManager.SwapParams
             //reverting if the swap is exactIn
             require(params.amountSpecified > 0, "exactIn not allowed");
             // buy token function will call
-            (int128 _deltaSpecified, int128 _deltaUnspecified) = buyOperator(key, amountInOutPositive, isBaseZero, hookData.deriveAsset);
+            (int128 _deltaSpecified, int128 _deltaUnspecified) = buyOperator(key, amountInOutPositive, isBaseZero, hookData.poolAdd);
             beforeSwapDelta = toBeforeSwapDelta(_deltaSpecified, _deltaUnspecified);
             emit HookSwap(id, sender,_deltaSpecified,_deltaUnspecified,0, 0);
 
@@ -232,29 +232,29 @@ function _beforeSwap(address sender,PoolKey calldata key,IPoolManager.SwapParams
 //the contract holdings gonna take part in the pricing
 function _afterSwap(address, PoolKey calldata, IPoolManager.SwapParams calldata, BalanceDelta, bytes calldata data)internal override returns (bytes4, int128){
     HookData memory hookData = abi.decode(data, (HookData));
-    address _deriveAsset = hookData.deriveAsset;
-    address _poolAddress = vixTokens[_deriveAsset].poolAddress;
-    uint160 initialIv = vixTokens[_deriveAsset].initialIv;
-    uint160 iv = calculateIv(_poolAddress,hookData.volume,hookData.deriveAsset);
-    if(vixTokens[_deriveAsset].reserve0 >0 && vixTokens[_deriveAsset].reserve1 >0){
+    address _poolAdd = hookData.poolAdd;
+    address _poolAddress = vixTokens[_poolAdd].poolAddress;
+    uint160 initialIv = vixTokens[_poolAdd].initialIv;
+    uint160 iv = calculateIv(_poolAddress,hookData.volume,hookData.poolAdd);
+    if(vixTokens[_poolAdd].reserve0 >0 && vixTokens[_poolAdd].reserve1 >0){
         // when we deployed the vix, we take the iv, in after swap, i calc iv again and compare with initial IV
     // initial IV > current IV, reserve swap from high token to low token,
     // and contract holding also burn for high token and mint for low toke.
     // vice versa. we know that contract holding is take part in pricing the token!. 
-        (uint reserveShift,uint tokenBurn) =  swapReserve(initialIv,iv,vixTokens[_deriveAsset].reserve0,vixTokens[_deriveAsset].reserve1,vixTokens[_deriveAsset].circulation0,vixTokens[_deriveAsset].circulation1,_deriveAsset);
+        (uint reserveShift,uint tokenBurn) =  swapReserve(initialIv,iv,vixTokens[_poolAdd].reserve0,vixTokens[_poolAdd].reserve1,vixTokens[_poolAdd].circulation0,vixTokens[_poolAdd].circulation1,_poolAdd);
         console.log("reserve shift: ",reserveShift);
         console.log("token burn: ",tokenBurn);
  
 
     }
-    console.log("contract holding0: ",vixTokens[_deriveAsset].contractHoldings0);
-    console.log("contract holding1: ",vixTokens[_deriveAsset].contractHoldings1);
+    console.log("contract holding0: ",vixTokens[_poolAdd].contractHoldings0);
+    console.log("contract holding1: ",vixTokens[_poolAdd].contractHoldings1);
     // after swap event
            emit AfterVPTSwap(
             _poolAddress,
             iv,
-            bondingCurve.settingPrice(SLOPE,(vixTokens[_deriveAsset].contractHoldings0/1e18), BASE_PRICE),
-            bondingCurve.settingPrice(SLOPE,(vixTokens[_deriveAsset].contractHoldings1/1e18), BASE_PRICE),
+            bondingCurve.settingPrice(SLOPE,(vixTokens[_poolAdd].contractHoldings0/1e18), BASE_PRICE),
+            bondingCurve.settingPrice(SLOPE,(vixTokens[_poolAdd].contractHoldings1/1e18), BASE_PRICE),
             block.timestamp
         );
     
@@ -263,14 +263,14 @@ function _afterSwap(address, PoolKey calldata, IPoolManager.SwapParams calldata,
 
 
 
-function buyOperator(PoolKey calldata key,uint amount,bool zeroIsBase,address _deriveAsset) private returns (int128,int128){
-    VixTokenData storage vixTokenData = vixTokens[_deriveAsset];
+function buyOperator(PoolKey calldata key,uint amount,bool zeroIsBase,address _poolAdd) private returns (int128,int128){
+    VixTokenData storage vixTokenData = vixTokens[_poolAdd];
    bool isHighToken = (address(Currency.unwrap(key.currency0)) == vixTokenData.vixHighToken || address(Currency.unwrap(key.currency1)) == vixTokenData.vixHighToken);
     return isHighToken ? buyHighToken(key,vixTokenData,amount,zeroIsBase) : buyLowToken(key,vixTokenData,amount,zeroIsBase);
 }
 
-function sellOperator(PoolKey calldata key,uint amount,bool zeroIsBase,address _deriveAsset) private returns (int128,int128){
-    VixTokenData storage vixTokenData = vixTokens[_deriveAsset];
+function sellOperator(PoolKey calldata key,uint amount,bool zeroIsBase,address _poolAdd) private returns (int128,int128){
+    VixTokenData storage vixTokenData = vixTokens[_poolAdd];
    bool isHighToken = (address(Currency.unwrap(key.currency0)) == vixTokenData.vixHighToken || address(Currency.unwrap(key.currency1)) == vixTokenData.vixHighToken);
     return isHighToken ? sellHighToken(key,vixTokenData,amount,zeroIsBase) : sellLowToken(key,vixTokenData,amount,zeroIsBase);
 }
@@ -391,8 +391,8 @@ function withdrawEarningsForOwner() public {
     
 }
 
-function withdrawEarningsForInitiator(address _deriveAsset) public {
-    VixTokenData storage vixTokenData = vixTokens[_deriveAsset];
+function withdrawEarningsForInitiator(address _poolAdd) public {
+    VixTokenData storage vixTokenData = vixTokens[_poolAdd];
     require(vixTokenData.deriveInitiator == msg.sender,"Not authorized to withdraw earnings");
     uint256 amountEarned = vixTokenData.earnings;
     require(amountEarned > 0, "No earnings to withdraw");
@@ -522,8 +522,8 @@ function mintVixToken(address to,address _token,uint _amount) internal returns (
 
 
 
-function getVixData(address deriveAsset)public view returns (address vixHighToken,address _vixLowToken,uint _circulation0,uint _circulation1,uint _contractHoldings0,uint _contractHoldings1,uint _reserve0,uint _reserve1,address _poolAddress){
-     VixTokenData memory vixTokenData = vixTokens[deriveAsset];
+function getVixData(address poolAdd)public view returns (address vixHighToken,address _vixLowToken,uint _circulation0,uint _circulation1,uint _contractHoldings0,uint _contractHoldings1,uint _reserve0,uint _reserve1,address _poolAddress){
+     VixTokenData memory vixTokenData = vixTokens[poolAdd];
      return (vixTokenData.vixHighToken,vixTokenData.vixLowToken,vixTokenData.circulation0,vixTokenData.circulation1,vixTokenData.contractHoldings0,vixTokenData.contractHoldings1,vixTokenData.reserve0,vixTokenData.reserve1,vixTokenData.poolAddress);
 }
 
@@ -535,7 +535,7 @@ function getVixData(address deriveAsset)public view returns (address vixHighToke
  * @return _iv it will return the iv.
  */
 
-function calculateIv(address _poolAddress,uint160 volume,address deriveAsset) public view returns (uint160 _iv){
+function calculateIv(address _poolAddress,uint160 volume,address poolAdd) public view returns (uint160 _iv){
     console.log("pool address: ",_poolAddress); 
    address poolAddress= _poolAddress;
    IUniswapV3Pool pool = IUniswapV3Pool(poolAddress);
@@ -576,7 +576,7 @@ function calculateIv(address _poolAddress,uint160 volume,address deriveAsset) pu
 }
 
 
-function swapReserve(uint initialIv, uint currentIv, uint reserve0, uint reserve1,uint circulation0,uint circulation1,address deriveAsset) public  returns(uint,uint){
+function swapReserve(uint initialIv, uint currentIv, uint reserve0, uint reserve1,uint circulation0,uint circulation1,address poolAdd) public  returns(uint,uint){
     if(initialIv > currentIv && reserve0 > 1 ether){
         /* 
         1. swap certain amount of reserve0 (high token Reserve) to reserve1 (low token Reserve) 
@@ -591,10 +591,10 @@ function swapReserve(uint initialIv, uint currentIv, uint reserve0, uint reserve
         uint tokenMint = (reserveShift * circulation1) / (reserve1+1);
 
 
-        vixTokens[deriveAsset].reserve0 -= reserveShift;
-        vixTokens[deriveAsset].reserve1 += reserveShift;
-        vixTokens[deriveAsset].contractHoldings0 -= tokenBurn;
-        vixTokens[deriveAsset].contractHoldings1 += tokenMint;
+        vixTokens[poolAdd].reserve0 -= reserveShift;
+        vixTokens[poolAdd].reserve1 += reserveShift;
+        vixTokens[poolAdd].contractHoldings0 -= tokenBurn;
+        vixTokens[poolAdd].contractHoldings1 += tokenMint;
         return (reserveShift,tokenBurn);
 
 
@@ -611,10 +611,10 @@ function swapReserve(uint initialIv, uint currentIv, uint reserve0, uint reserve
         require(reserveShift > 0,"reserve shift should be greater than 0");
         uint tokenBurn = (reserveShift * circulation1) / (reserve1+1);
         uint tokenMint = (reserveShift * circulation0) / (reserve0+1);
-        vixTokens[deriveAsset].reserve0 += reserveShift;
-        vixTokens[deriveAsset].reserve1 -= reserveShift;
-        vixTokens[deriveAsset].contractHoldings1 -= tokenBurn;
-        vixTokens[deriveAsset].contractHoldings0 += tokenMint;
+        vixTokens[poolAdd].reserve0 += reserveShift;
+        vixTokens[poolAdd].reserve1 -= reserveShift;
+        vixTokens[poolAdd].contractHoldings1 -= tokenBurn;
+        vixTokens[poolAdd].contractHoldings0 += tokenMint;
         return (reserveShift,tokenMint);
     }else{
         return (0,0);

@@ -14,7 +14,7 @@ library ImpliedVolatility {
      * @param tickLiquidity The liquidity of the tick
      * @param fee The fee of the trade
      * @param isScaled to see if the inputs are already scaled
-     * @return The implied volatility (return value is scaled to 12 decimals)
+     * @return The implied volatility (return value is scaled to 15 decimals)
      */
      function ivCalculation(
         uint160 volume,
