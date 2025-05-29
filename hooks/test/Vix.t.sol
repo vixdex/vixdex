@@ -18,7 +18,7 @@ import {TickMath} from "v4-core/src/libraries/TickMath.sol";
 import {Vix} from "../src/Vix.sol";
 //neede to automatically deploy and get bytecode adn address of bonding curve
 import {HuffDeployer} from "foundry-huff/HuffDeployer.sol";
-
+import {IVolumeOracle} from "../src/interfaces/IVolumeOracle.sol";
 
 contract VixTest is Test,Deployers {
     using CurrencyLibrary for Currency;
@@ -26,24 +26,23 @@ contract VixTest is Test,Deployers {
 
     Vix hook;
     address public baseToken;
-    address public poolAdd;
+    address public poolAdd = 0xCBCdF9626bC03E24f779434178A73a0B4bad62eD; // pool address of uniswap V3 pair (WBTC/ETH)
     address[2] ivTokenAdd;
-    uint160 _volume = 67;
+    address volumeOracle = 0x7E287bb62F87916c190b45BA0921F862Fb4b9Aa5; // volume oracle from vixdex
+
     struct HookData{
         address poolAdd;
-        uint160 volume;
     }
-    address _bondingCurve = 0x512F94E0a875516da53e2e59aC1995d6B2fbF781;
-    uint slope = 0.003 * 1e18;
-    uint fee = 0.003 * 1e18;
-    uint basePrice = 0.1 * 1e18;
+    address _bondingCurve = 0xa2Cd20296027836dbD67874Ebd4a11Eeede292C8; // Bonding curve address 
+    uint slope = 0.003 * 1e18; //slope of bonding curve
+    uint fee = 0.003 * 1e18; // fee for the bonding curve
+    uint basePrice = 0.1 * 1e18; // base price of the bonding curve
 
     function setUp()external {
         deployFreshManagerAndRouters();
         (currency0, currency1) = deployMintAndApprove2Currencies();   
         console.log("_baseTokenCurrency: ",Currency.unwrap(currency0));
         baseToken = address(Currency.unwrap(currency0));
-        poolAdd = address(Currency.unwrap(currency1));
         address hookAddress = address(
             uint160(
                     Hooks.BEFORE_ADD_LIQUIDITY_FLAG |
@@ -52,14 +51,10 @@ contract VixTest is Test,Deployers {
                     Hooks.AFTER_SWAP_FLAG
             )
         );
-        deployCodeTo("Vix.sol",abi.encode(manager,baseToken,_bondingCurve,slope,fee,basePrice),hookAddress);
+        deployCodeTo("Vix.sol",abi.encode(manager,baseToken,_bondingCurve,volumeOracle,slope,fee,basePrice),hookAddress);
 
         hook = Vix(hookAddress);
-        uint256 pairDeadline =(3600*24);
-
-        uint160 tickLiquidity = 13401+4761696;
-        poolAdd = 0xCBCdF9626bC03E24f779434178A73a0B4bad62eD;
-        (address[2] memory ivTokenAddresses) = hook.deploy2Currency(poolAdd,["HIGH-IV-BTC","LOW-IV-BTC"],["HIVB","LIVB"],poolAdd,_volume,pairDeadline);
+        (address[2] memory ivTokenAddresses) = hook.deploy2Currency(poolAdd,["HIGH-IV-BTC","LOW-IV-BTC"],["HIVB","LIVB"],poolAdd);
         ivTokenAdd = ivTokenAddresses;
         assertEq(MockERC20(ivTokenAdd[0]).balanceOf(address(manager)), MockERC20(ivTokenAdd[0]).totalSupply());
         assertEq(MockERC20(ivTokenAdd[1]).balanceOf(address(manager)), MockERC20(ivTokenAdd[1]).totalSupply());
@@ -108,8 +103,8 @@ contract VixTest is Test,Deployers {
         console.log("balanceOf high vix token before buying:",MockERC20(ivTokenAdd[0]).balanceOf(address(this)));
         uint baseTokenBalance = MockERC20(baseToken).balanceOf(address(this));
         console.log("base token balance before buying:",baseTokenBalance);
-        bytes memory hookData =  abi.encode(HookData(poolAdd, _volume));
-       // uint gasStart = gasleft();
+        bytes memory hookData =  abi.encode(HookData(poolAdd));
+       uint gasStart = gasleft();
         swapRouter.swap(
             key,
             IPoolManager.SwapParams(
@@ -123,7 +118,7 @@ contract VixTest is Test,Deployers {
             hookData
         );
         uint balance =  MockERC20(ivTokenAdd[0]).balanceOf(address(this));
-        //console.log("Gas used for buying high vix token: ", gasStart - gasleft());
+        console.log("Gas used for buying high vix token: ", gasStart - gasleft());
         console.log("balanceOf high vix token after buy:",balance);
         console.log("base token balance after buying:",MockERC20(baseToken).balanceOf(address(this)));
         MockERC20(ivTokenAdd[0]).approve(address(swapRouter),balance);
@@ -147,202 +142,191 @@ contract VixTest is Test,Deployers {
         console.log("balance of base token in pool manager: ",MockERC20(baseToken).balanceOf(address(manager)));
         console.log("balance of base token in hook: ",MockERC20(baseToken).balanceOf(address(hook)));
         console.log("balance of base token in this contract: ",MockERC20(baseToken).balanceOf(address(this)));
-
     }
 
-    //    function test_swapLowVolatileToken() external{
-    //     //    vm.skip(true);
-    //     Currency token0;
-    //     Currency token1;
+       function test_swapLowVolatileToken() external{
+        //    vm.skip(true);
+        Currency token0;
+        Currency token1;
 
-    //     (token0,token1) = SortTokens.sort(MockERC20(baseToken),MockERC20(ivTokenAdd[1]));
-    //     //initializing Pool for base token & high IV token
-    //     (key, ) = initPool(
-    //         token0,
-    //         token1, //high IV token
-    //         hook,
-    //         3000,
-    //         SQRT_PRICE_1_1
-    //     );
+        (token0,token1) = SortTokens.sort(MockERC20(baseToken),MockERC20(ivTokenAdd[1]));
+        //initializing Pool for base token & high IV token
+        (key, ) = initPool(
+            token0,
+            token1, //high IV token
+            hook,
+            3000,
+            SQRT_PRICE_1_1
+        );
+        console.log("----------low token swap test----------");
+        //swap
+        PoolSwapTest.TestSettings memory settings = PoolSwapTest.TestSettings({
+        takeClaims: false,
+        settleUsingBurn: false
+        });
+        console.log("balanceOf low vix token before buying:",MockERC20(ivTokenAdd[1]).balanceOf(address(this)));
+        uint baseTokenBalance = MockERC20(baseToken).balanceOf(address(this));
+        console.log("base token balance before buying:",baseTokenBalance);
+        bytes memory hookData =  abi.encode(HookData(poolAdd));
 
-    //     //swap
-    //     PoolSwapTest.TestSettings memory settings = PoolSwapTest.TestSettings({
-    //     takeClaims: false,
-    //     settleUsingBurn: false
-    //     });
-    //     console.log("balanceOf high vix token before buying:",MockERC20(ivTokenAdd[1]).balanceOf(address(this)));
-    //     uint baseTokenBalance = MockERC20(baseToken).balanceOf(address(this));
-    //     console.log("base token balance before buying:",baseTokenBalance);
-    //     bytes memory hookData =  abi.encode(HookData(poolAdd, _volume));
+        swapRouter.swap(
+            key,
+            IPoolManager.SwapParams(
+            {
+            zeroForOne: true,
+            amountSpecified: 4 ether,
+            sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE + 1
+            }
+            ), 
+            settings,
+            hookData
+        );
+        uint balance =  MockERC20(ivTokenAdd[1]).balanceOf(address(this));
 
-    //     swapRouter.swap(
-    //         key,
-    //         IPoolManager.SwapParams(
-    //         {
-    //         zeroForOne: true,
-    //         amountSpecified: 166665 * 1 ether,
-    //         sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE + 1
-    //         }
-    //         ), 
-    //         settings,
-    //         hookData
-    //     );
-    //     uint balance =  MockERC20(ivTokenAdd[1]).balanceOf(address(this));
+        console.log("balanceOf low vix token after buy:",balance);
+        console.log("base token balance after buying:",MockERC20(baseToken).balanceOf(address(this)));
+        MockERC20(ivTokenAdd[1]).approve(address(swapRouter),balance);
+            swapRouter.swap(
+            key,
+            IPoolManager.SwapParams(
+            {
+                zeroForOne:false,
+                amountSpecified: -(int256(balance)), 
+                sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE - 1
+            }),
+            settings,
+            hookData
+        );
 
-    //     console.log("balanceOf high vix token after buy:",balance);
-    //     console.log("base token balance after buying:",MockERC20(baseToken).balanceOf(address(this)));
-    //     MockERC20(ivTokenAdd[1]).approve(address(swapRouter),balance);
-    //         swapRouter.swap(
-    //         key,
-    //         IPoolManager.SwapParams(
-    //         {
-    //             zeroForOne:false,
-    //             amountSpecified: -(int256(balance)), 
-    //             sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE - 1
-    //         }),
-    //         settings,
-    //         hookData
-    //     );
-
-    //     console.log("balanceOf high vix after sold:",MockERC20(ivTokenAdd[1]).balanceOf(address(this)));
-    //     console.log("base token balance after sold vix tokens:",MockERC20(baseToken).balanceOf(address(this)));
-    //}
+        console.log("balanceOf low vix after sold:",MockERC20(ivTokenAdd[1]).balanceOf(address(this)));
+        console.log("base token balance after sold vix tokens:",MockERC20(baseToken).balanceOf(address(this)));
+    }
 
     
 
 
 
-// function test_PriceChangesInVolatility() external {
-//     // Setting up low volatility token
-//     Currency lowToken0;
-//     Currency lowToken1;
+function test_PriceChangesInVolatility() external {
+    // Setting up low volatility token
+    Currency lowToken0;
+    Currency lowToken1;
 
-//     (lowToken0, lowToken1) = SortTokens.sort(MockERC20(baseToken), MockERC20(ivTokenAdd[1]));
-//     (key, ) = initPool(lowToken0, lowToken1, hook, 3000, SQRT_PRICE_1_1);
+    (lowToken0, lowToken1) = SortTokens.sort(MockERC20(baseToken), MockERC20(ivTokenAdd[1]));
+    (key, ) = initPool(lowToken0, lowToken1, hook, 3000, SQRT_PRICE_1_1);
 
-//     // Swap settings
-//     PoolSwapTest.TestSettings memory settings = PoolSwapTest.TestSettings({
-//         takeClaims: false,
-//         settleUsingBurn: false
-//     });
+    // Swap settings
+    PoolSwapTest.TestSettings memory settings = PoolSwapTest.TestSettings({
+        takeClaims: false,
+        settleUsingBurn: false
+    });
 
-//     bytes memory hookData = abi.encode(HookData(poolAdd, _volume));
+    bytes memory hookData = abi.encode(HookData(poolAdd));
 
-//          swapRouter.swap(
-//             key,
-//             IPoolManager.SwapParams(
-//             {
-//             zeroForOne: true,
-//             amountSpecified: 166665 * 1 ether,
-//             sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE + 1
-//             }
-//             ), 
-//             settings,
-//             hookData
-//         );
+         swapRouter.swap(
+            key,
+            IPoolManager.SwapParams(
+            {
+            zeroForOne: true,
+            amountSpecified: 166665 * 1 ether,
+            sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE + 1
+            }
+            ), 
+            settings,
+            hookData
+        );
 
-//     // Setting up high volatility token
-//     Currency highToken0;
-//     Currency highToken1;
+    // Setting up high volatility token
+    Currency highToken0;
+    Currency highToken1;
 
-//     (highToken0, highToken1) = SortTokens.sort(MockERC20(baseToken), MockERC20(ivTokenAdd[0]));
-//     (key, ) = initPool(highToken0, highToken1, hook, 3000, SQRT_PRICE_1_1);
+    (highToken0, highToken1) = SortTokens.sort(MockERC20(baseToken), MockERC20(ivTokenAdd[0]));
+    (key, ) = initPool(highToken0, highToken1, hook, 3000, SQRT_PRICE_1_1);
 
-//     // Buying high IV/VIX token
-//          swapRouter.swap(
-//             key,
-//             IPoolManager.SwapParams(
-//             {
-//             zeroForOne: true,
-//             amountSpecified: 166665 * 1 ether,
-//             sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE + 1
-//             }
-//             ), 
-//             settings,
-//             hookData
-//         );
+    // Buying high IV/VIX token
+         swapRouter.swap(
+            key,
+            IPoolManager.SwapParams(
+            {
+            zeroForOne: true,
+            amountSpecified: 166665 * 1 ether,
+            sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE + 1
+            }
+            ), 
+            settings,
+            hookData
+        );
 
-//     // Logging token balances
-//     console.log("Low VIX token balance:", MockERC20(ivTokenAdd[1]).balanceOf(address(this)));
-//     console.log("High VIX token balance:", MockERC20(ivTokenAdd[0]).balanceOf(address(this)));
+    // Logging token balances
+    console.log("Low VIX token balance:", MockERC20(ivTokenAdd[1]).balanceOf(address(this)));
+    console.log("High VIX token balance:", MockERC20(ivTokenAdd[0]).balanceOf(address(this)));
 
-//     // Fetching VIX token data
-//     (
-//         address vixHighToken, 
-//         address vixLowToken, 
-//         uint circulation0, 
-//         uint circulation1, 
-//         uint contractHoldings0, 
-//         uint contractHoldings1, 
-//         uint reserve0, 
-//         uint reserve1, 
-//         address poolAddress
-//     ) = hook.getVixData(poolAdd);
+    // Fetching VIX token data
+    (
+        address vixHighToken, 
+        address vixLowToken, 
+        uint circulation0, 
+        uint circulation1, 
+        uint contractHoldings0, 
+        uint contractHoldings1, 
+        uint reserve0, 
+        uint reserve1, 
+        address poolAddress
+    ) = hook.getVixData(poolAdd);
 
-//     // Logging reserves and circulation data
-//     console.log("Reserve0:", reserve0);
-//     console.log("Reserve1:", reserve1);
-//     console.log("Contract Holdings0:", contractHoldings0);
-//     console.log("Circulation0:", circulation0);
-//     console.log("Contract Holdings1:", contractHoldings1);
-//     console.log("Circulation1:", circulation1);
-//     console.log("price of HVT before volatility shift: ", hook.vixTokensPrice(contractHoldings0));
-//     console.log("price of LVT before volatility shift: ", hook.vixTokensPrice(contractHoldings1));
-//     // Swapping reserve based on volatility shift
-//     (uint reserveShift, uint tokenBurn) = hook.swapReserve(
-//         20930878980, 21930878980, 
-//         reserve0, reserve1, 
-//         circulation0, circulation1, 
-//         poolAdd
-//     );
+    // Logging reserves and circulation data
+    console.log("Reserve0:", reserve0);
+    console.log("Reserve1:", reserve1);
+    console.log("Contract Holdings0:", contractHoldings0);
+    console.log("Circulation0:", circulation0);
+    console.log("Contract Holdings1:", contractHoldings1);
+    console.log("Circulation1:", circulation1);
+    console.log("price of HVT before volatility shift: ", hook.vixTokensPrice(contractHoldings0));
+    console.log("price of LVT before volatility shift: ", hook.vixTokensPrice(contractHoldings1));
+    // Swapping reserve based on volatility shift
+    (uint reserveShift, uint tokenBurn) = hook.swapReserve(
+        20930878980, 21930878980, 
+        reserve0, reserve1, 
+        circulation0, circulation1, 
+        poolAdd
+    );
 
-//     // Logging swap results
-//     console.log("Reserve Shift:", reserveShift);
-//     console.log("Token Burn:", tokenBurn);
+    // Logging swap results
+    console.log("Reserve Shift:", reserveShift);
+    console.log("Token Burn:", tokenBurn);
 
-//     // Fetching and logging updated price and IV
-//     uint price = hook.vixTokensPrice(166670 * 1e18);
-//     uint160 volume = 3590;
-//     uint iv = hook.calculateIv(0x8ad599c3A0ff1De082011EFDDc58f1908eb6e6D8, volume);
-//     console.log("IV:", iv);
-//     console.log("Price:", price);
+    // Fetching and logging updated price and IV
+    uint price = hook.vixTokensPrice(166670 * 1e18);
+    uint160 volume = 3590;
+    uint iv = hook.calculateIv(0x8ad599c3A0ff1De082011EFDDc58f1908eb6e6D8, volume);
+    console.log("IV:", iv);
+    console.log("Price:", price);
 
-//     // Fetching updated VIX token data after swap
-//     (
-//         vixHighToken, 
-//         vixLowToken, 
-//         circulation0, 
-//         circulation1, 
-//         contractHoldings0, 
-//         contractHoldings1, 
-//         reserve0, 
-//         reserve1, 
-//         poolAddress
-//     ) = hook.getVixData(poolAdd);
+    // Fetching updated VIX token data after swap
+    (
+        vixHighToken, 
+        vixLowToken, 
+        circulation0, 
+        circulation1, 
+        contractHoldings0, 
+        contractHoldings1, 
+        reserve0, 
+        reserve1, 
+        poolAddress
+    ) = hook.getVixData(poolAdd);
 
-//     // Logging updated reserves and circulation data
-//     console.log("Updated Reserve0:", reserve0);
-//     console.log("Updated Reserve1:", reserve1);
-//     console.log("Updated Contract Holdings0:", contractHoldings0);
-//     console.log("Updated Circulation0:", circulation0);
-//     console.log("Updated Contract Holdings1:", contractHoldings1);
-//     console.log("Updated Circulation1:", circulation1);
-//     console.log("price of HVT before volatility shift: ", hook.vixTokensPrice(contractHoldings0));
-//     console.log("price of LVT before volatility shift: ", hook.vixTokensPrice(contractHoldings1));
-// }
+    // Logging updated reserves and circulation data
+    console.log("Updated Reserve0:", reserve0);
+    console.log("Updated Reserve1:", reserve1);
+    console.log("Updated Contract Holdings0:", contractHoldings0);
+    console.log("Updated Circulation0:", circulation0);
+    console.log("Updated Contract Holdings1:", contractHoldings1);
+    console.log("Updated Circulation1:", circulation1);
+    console.log("price of HVT before volatility shift: ", hook.vixTokensPrice(contractHoldings0));
+    console.log("price of LVT before volatility shift: ", hook.vixTokensPrice(contractHoldings1));
+}
 
 
-//     function test_resetPair() external{
-//         //expect revert when trying to reset pair before deadline
-//         uint deadline = 3600 * 24;
-//         console.log("block timestamp: ",block.timestamp);
-//         vm.expectRevert();
-//         hook.resetPair(poolAdd, deadline,0xCBCdF9626bC03E24f779434178A73a0B4bad62eD,_volume);
-//         //expect revert when transfering token after deadline
-//         vm.warp(block.timestamp + 30 hours);
-//         console.log("block timestamp: ",block.timestamp);
-//         hook.resetPair(poolAdd, deadline,0xCBCdF9626bC03E24f779434178A73a0B4bad62eD,_volume); 
-//     }
+
     
     
 

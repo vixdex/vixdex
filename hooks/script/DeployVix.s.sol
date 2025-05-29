@@ -26,6 +26,7 @@ contract HookMiningSample is Script {
 		// Find an address + salt using HookMiner that meets our flags criteria
         address CREATE2_DEPLOYER = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
         address _bondingCurve = 0xfC47d03bd4C8a7E62A62f29000ceBa4D84142343;
+        address volumeOracle = 0x7E287bb62F87916c190b45BA0921F862Fb4b9Aa5; // Replace with actual VolumeOracle address if needed
         uint slope = 0.03 * 1e18;
          uint fee = 0.0003 * 1e18;
          uint basePrice = 0.1 * 1e18;
@@ -36,7 +37,7 @@ contract HookMiningSample is Script {
             abi.encode(address(manager),address(baseToken))
         );		// Deploy our hook contract with the given `salt` value
         vm.startBroadcast();
-        Vix hook = new Vix{salt: salt}(manager, baseToken,_bondingCurve,slope,fee,basePrice);
+        Vix hook = new Vix{salt: salt}(manager, baseToken,_bondingCurve,volumeOracle,slope,fee,basePrice);
 		// Ensure it got deployed to our pre-computed address
         require(address(hook) == hookAddress, "hook address mismatch");
         console.log(address(hook));

@@ -23,7 +23,7 @@ import {LiquidityConversion} from "./lib/LiquidityConversion.sol";
 import {IBondingCurve} from "./interfaces/IBondingCurve.sol";
 import "forge-std/console.sol";  // Foundry's console library
 import {TickMath} from "@uniswap/v3-core/contracts/libraries/TickMath.sol";
-
+import {IVolumeOracle} from "./interfaces/IVolumeOracle.sol";
 
 /**
  * @title Vix - Implied Volatility Trading Contract
@@ -53,7 +53,7 @@ import {TickMath} from "@uniswap/v3-core/contracts/libraries/TickMath.sol";
 contract Vix is BaseHook{
 
     // events
-    event PairInitiated(address indexed _deriveToken, address indexed _vixHighToken, address indexed _vixLowToken,uint _initiatedTime ,uint256 _deadline,uint initiatedIV);
+    event PairInitiated(address indexed _deriveToken, address indexed _vixHighToken, address indexed _vixLowToken,uint _initiatedTime,uint initiatedIV);
     event HookSwap(bytes32 indexed id, address indexed sender,int128 amount0,int128 amount1,uint128 hookLPfeeAmount0,uint128 hookLPfeeAmount1);
     event AfterVPTSwap(address indexed poolAddress,uint iv,uint price0,uint price1,uint timeStamp);
 
@@ -86,14 +86,14 @@ contract Vix is BaseHook{
         uint reserve0;
         uint reserve1;
         address poolAddress;
-        uint160 initialIv;
+        uint160 averageIV; // average implied volatility of the pair
+        uint160 counts; // iv counts for take average
         address deriveInitiator; // address that initiated the pair
         uint earnings; // earnings of the derive initiator
     }
 
     struct HookData{
         address poolAdd;
-        uint160 volume;
     }
 
     mapping(address=>VixTokenData) vixTokens;
@@ -112,14 +112,16 @@ contract Vix is BaseHook{
     mapping(address => uint) public earnings;
     //Bonding curve contract
     IBondingCurve public bondingCurve;
+    IVolumeOracle public volumeOracle;
 
     //initiating BaseHook with IPoolManager
-    constructor(IPoolManager poolManager,address _baseToken,address _bondingCurve,uint slope, uint fee,uint basePrice) BaseHook(poolManager) {
+    constructor(IPoolManager poolManager,address _baseToken,address _bondingCurve,address _volumeOracle,uint slope, uint fee,uint basePrice) BaseHook(poolManager) {
         baseToken = _baseToken;
         SLOPE = slope;
         FEE = fee;
         BASE_PRICE = basePrice;
         bondingCurve = IBondingCurve(_bondingCurve);
+        volumeOracle = IVolumeOracle(_volumeOracle);
         owner = msg.sender; // setting the owner of the contract
     }
 
@@ -234,19 +236,22 @@ function _afterSwap(address, PoolKey calldata, IPoolManager.SwapParams calldata,
     HookData memory hookData = abi.decode(data, (HookData));
     address _poolAdd = hookData.poolAdd;
     address _poolAddress = vixTokens[_poolAdd].poolAddress;
-    uint160 initialIv = vixTokens[_poolAdd].initialIv;
-    uint160 iv = calculateIv(_poolAddress,hookData.volume,hookData.poolAdd);
+    uint160 volume = uint160(volumeOracle.getVolumeData(_poolAddress).volume24HrInQuoteToken);
+    uint160 iv = calculateIv(_poolAddress,volume,hookData.poolAdd);
     if(vixTokens[_poolAdd].reserve0 >0 && vixTokens[_poolAdd].reserve1 >0){
         // when we deployed the vix, we take the iv, in after swap, i calc iv again and compare with initial IV
-    // initial IV > current IV, reserve swap from high token to low token,
-    // and contract holding also burn for high token and mint for low toke.
-    // vice versa. we know that contract holding is take part in pricing the token!. 
-        (uint reserveShift,uint tokenBurn) =  swapReserve(initialIv,iv,vixTokens[_poolAdd].reserve0,vixTokens[_poolAdd].reserve1,vixTokens[_poolAdd].circulation0,vixTokens[_poolAdd].circulation1,_poolAdd);
+        // initial IV > current IV, reserve swap from high token to low token,
+        // and contract holding also burn for high token and mint for low toke.
+        // vice versa. we know that contract holding is take part in pricing the token!. 
+        (uint reserveShift,uint tokenBurn) =  swapReserve(vixTokens[_poolAdd].averageIV,iv,vixTokens[_poolAdd].reserve0,vixTokens[_poolAdd].reserve1,vixTokens[_poolAdd].circulation0,vixTokens[_poolAdd].circulation1,_poolAdd);
         console.log("reserve shift: ",reserveShift);
         console.log("token burn: ",tokenBurn);
- 
-
     }
+    // updating the average IV
+    vixTokens[_poolAdd].averageIV = (vixTokens[_poolAdd].averageIV * vixTokens[_poolAdd].counts + iv) / (vixTokens[_poolAdd].counts + 1);
+    vixTokens[_poolAdd].counts += 1; // incrementing the counts for average IV calculation
+    console.log("average IV: ",vixTokens[_poolAdd].averageIV);
+    console.log("counts: ",vixTokens[_poolAdd].counts);
     console.log("contract holding0: ",vixTokens[_poolAdd].contractHoldings0);
     console.log("contract holding1: ",vixTokens[_poolAdd].contractHoldings1);
     // after swap event
@@ -351,7 +356,7 @@ function sellLowToken(PoolKey calldata key,VixTokenData storage vixTokenData,uin
     uint256 salesToken = amountInOutPositive/1e18;
     require(salesToken > 0, "amount should be greater than 0");
     uint contractHoldings = vixTokenData.contractHoldings1/1e18;
-    uint256 curveCost = bondingCurve.costOfSellingToken(SLOPE,contractHoldings,amountInOutPositive,BASE_PRICE);
+    uint256 curveCost = bondingCurve.costOfSellingToken(SLOPE,contractHoldings,salesToken,BASE_PRICE);
     uint fees = (curveCost * FEE) / 1e18;
     uint256 baseToken_returns = curveCost - ((curveCost * FEE) / 1e18);
     earnings[owner] += fees;
@@ -421,16 +426,14 @@ function withdrawEarningsForInitiator(address _poolAdd) public {
  * @param deriveToken The address of the derived asset for which the volatile tokens are created.
  * @param _tokenName An array containing the names of the two volatile tokens.
  * @param _tokenSymbol An array containing the symbols of the two volatile tokens.
- * @param deadline The duration (in seconds) after which the token pair will expire.
  *
  * @return address[2] The addresses of the newly deployed volatile ERC20 tokens.
  */
 
-function deploy2Currency(address deriveToken, string[2] memory _tokenName, string[2] memory _tokenSymbol,address _poolAddress,uint160 volume,uint deadline) public returns(address[2] memory){
+function deploy2Currency(address deriveToken, string[2] memory _tokenName, string[2] memory _tokenSymbol,address _poolAddress ) public returns(address[2] memory){
     require((isPairInitiated[deriveToken] == false || pairEndingTime[deriveToken] < block.timestamp),"Pair still active");
     isPairInitiated[deriveToken] = true;
     pairInitiatedTime[deriveToken] = block.timestamp;
-    pairEndingTime[deriveToken] = block.timestamp + deadline;
     address[2] memory vixTokenAddresses;
     for(uint i = 0; i < 2; i++){
             VolatileERC20 v_token = new VolatileERC20(_tokenName[i], _tokenSymbol[i]);
@@ -438,10 +441,11 @@ function deploy2Currency(address deriveToken, string[2] memory _tokenName, strin
             mintVixToken(address(this),address(v_token),IV_TOKEN_SUPPLY);
     }
 
+    uint160 volume = uint160(volumeOracle.getVolumeData(_poolAddress).volume24HrInQuoteToken);
     uint160 initialIv = calculateIv(_poolAddress,volume,deriveToken);
-    vixTokens[deriveToken] = VixTokenData(vixTokenAddresses[0],vixTokenAddresses[1],0,0,0,0,0,0,_poolAddress,initialIv,msg.sender,0);
+    vixTokens[deriveToken] = VixTokenData(vixTokenAddresses[0],vixTokenAddresses[1],0,0,0,0,0,0,_poolAddress,initialIv,0,msg.sender,0);
     liquidateVixTokenToPm(IV_TOKEN_SUPPLY, vixTokenAddresses[0], vixTokenAddresses[1]);
-    emit PairInitiated(deriveToken,vixTokenAddresses[0],vixTokenAddresses[1],block.timestamp,block.timestamp + deadline,initialIv);
+    emit PairInitiated(deriveToken,vixTokenAddresses[0],vixTokenAddresses[1],block.timestamp,initialIv);
     return (vixTokenAddresses);
 }
 
@@ -576,8 +580,8 @@ function calculateIv(address _poolAddress,uint160 volume,address poolAdd) public
 }
 
 
-function swapReserve(uint initialIv, uint currentIv, uint reserve0, uint reserve1,uint circulation0,uint circulation1,address poolAdd) public  returns(uint,uint){
-    if(initialIv > currentIv && reserve0 > 1 ether){
+function swapReserve(uint averageIV, uint currentIv, uint reserve0, uint reserve1,uint circulation0,uint circulation1,address poolAdd) public  returns(uint,uint){
+    if(averageIV > currentIv && reserve0 > 1 ether){
         /* 
         1. swap certain amount of reserve0 (high token Reserve) to reserve1 (low token Reserve) 
         2. burn contract holding 0 (high token) and mint contract holding 1 (low token)
@@ -598,7 +602,7 @@ function swapReserve(uint initialIv, uint currentIv, uint reserve0, uint reserve
         return (reserveShift,tokenBurn);
 
 
-    }else if(initialIv < currentIv && reserve1 >  1 ether){
+    }else if(averageIV < currentIv && reserve1 >  1 ether){
         /* 
         1. swap certain amount of reserve1 (low token Reserve) to reserve0 (high token Reserve) 
         2. burn contract holding 1 (low token) and mint contract holding 0 (high token)
