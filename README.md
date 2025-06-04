@@ -2,8 +2,12 @@
 
 VixDex - Decentralized Volatility Trading Protocol
 
+### uniswap prize winner hook in atrium academy UHI-4
+
 ## About this Project
 VixDex is a decentralized volatility trading protocol. It is a Uniswap V4 hook that introduces a custom pricing model for trading directly on volatility on-chain. VixDex allows traders to take positions on whether an asset’s volatility will increase or decrease, similar to VIX options trading but in a fully decentralized and automated manner.
+
+
 ## How it Works
 Traders can buy:
 
@@ -43,31 +47,131 @@ HIGH-IV and LOW-IV tokens are inversely correlated—when one increases, the oth
    `beforeSwapReturnDelta`
 
 
-## Limitations of the VixDex Volatility Trading Protocol
+# Vixdex Setup Guide
 
-🔹 🚧 Proof of Concept Stage: VixDex is currently a proof of concept, introducing how volatility trading can be done directly in DeFi. This lays the foundation for a fully optimized version.
+## Installation
 
-🔹 ⛽ High Gas Fees: The protocol's on-chain computations result in higher gas costs. Future optimizations using math libraries, bitwise operations, or assembly coding can improve efficiency.
+### Step 1: Clone This Repository
 
-🔹 📈 Static Price Curve Slope: The pricing mechanism relies on a fixed slope, which may limit flexibility. A dynamic curve could enhance adaptability and efficiency.
 
-🔹 🔄 Static Reserve Swap Mechanism: The reserve swap mechanism, tied to the pricing curve, remains in static slope as 3% (0.03). While it helps VPT (Vix Pair Tokens) pricing react to IV changes.
+`git clone https://github.com/vixdex/vixdex.git`
+`cd /hooks`
 
-🔹 📝 Function Naming: Some function names could be more intuitive and structured for better clarity and developer experience.
+### Step 2: Install Required Dependencies
 
-🔹 🧮 On-Chain Math Complexity: The protocol relies on heavy mathematical computations on-chain. However, this can be optimized using Solidity math libraries, bitwise operations, or assembly for better performance.
+#### Install Uniswap libraries:
 
-🔹 💰 Base Token Decimal Constraint: The base token must be 18 decimals, allowing WETH but excluding USDC & USDT. Expanding support for different decimals can improve usability.
+````
+```
+forge install https://github.com/Uniswap/v4-core
+forge install https://github.com/Uniswap/v4-periphery
+forge install uniswap/v3-periphery
+forge install uniswap/v3-core
+forge install uniswap/permit2
+forge install uniswap/universal-router
+forge install uniswap/v2-periphery
+forge install uniswap/v2-core
 
-🔹 ⚡ No Native Coin Support: The protocol does not yet support ETH as a base token, limiting direct native coin transactions.
+```
+````
 
-🔹 📊 Volume Calculation Limitation: Currently, volume data is fetched from The Graph, but not all trading pairs have an indexer. A universal volume-tracking mechanism can address this gap.
+#### Install OpenZeppelin:
 
-💡 The good news? All these challenges are solvable! Fixing them will make VixDex an super-efficient 
+`forge install OpenZeppelin/openzeppelin-contracts`
+
+#### Install Huff compiler integration
+
+before this step, install huff compiler.
+
+`forge install huff-language/foundry-huff`
+
+### Step 3: Run Forked Sepolia Network
+
+#### We’ll use anvil to fork the Ethereum Sepolia/Mainnet network:
+
+`anvil --fork-url https://ethereum-rpc.publicnode.com --chain-id 3133`
+
+
+💡 Use a unique chain ID not used by other networks to avoid MetaMask conflicts when working in client side.
+
+### Step 4: Deploy Huff Contract (Bonding Curve)
+
+`huffc src/BondingCurve.huff -b`
+
+Deploy with bytecode:
+`cast send --rpc-url <url> --private-key <private_key> --create 0x<bytecode>`
+
+This returns the BondingCurve contract address. Update your test or deployment contracts with this address.
+
+### Step 5: Deploy Volume Oracle
+
+1. Clone the vixdex-volume-oracle-node repository.
+
+2. Inside /node, install dependencies:
+
+`npm install`
+in .env change it according to yours!.
+
+
+````
+```
+GEKO_TERMINAL_URL="https://api.geckoterminal.com/api/v2/"
+MONGO_URI="mongodb://localhost:27017/vixdexFinance"
+RPC_URL="http://localhost:8545"
+PRIVATE_KEY="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80" # Replace this with your bonding curve address
+ORACLE_CONTRACT="0xAa07486C20F73fF4309495411927E6AE7C884DBa" # Replace after deploy
+```
+````
+
+### Step 6: Deploy Oracle Contract Using Truffle
+
+#### Go to /oracle, configure truffle-config.js for local development, then
+
+`truffle deploy`
+
+#### Update .env with the new oracle contract address.
+
+### Step 7: Start the Node Server
+
+cd node
+npx nodemon index.js
+
+### Step 8: Test Oracle API
+
+#### Use Postman or terminal:
+
+    URL: http://localhost:8000/volume/uniswapV3/pool/oracle
+
+    Body:
+
+   ````
+   ```
+{
+  "chain": "eth", <your fav network>
+  "poolAddress": "0xCBCdF9626bC03E24f779434178A73a0B4bad62eD" <your fav uniswap v3 pool>
+}
+
+
+   ```
+   ````
+   You’ll receive an array of volume data. Now your oracle contract is ready.
+### Step 9: Final Contract Testing & Deployment
+
+With both BondingCurve and Volume Oracle contracts ready:
+
+Update your smart contract variables.
+
+Happy coding :)
+
+## 📬 Contact
+
+If you have any questions, feedback, or are interested in contributing, feel free to reach out:
+
+- 📧 Vixdex Official Email: [social@vixdex.finance](mailto:social@vixdex.finance)  
+- 🐦 Twitter: [@vixdex_finance](https://x.com/vixdex_finance)
 
 ## ⚠️ Disclaimer
 
-VixDex is currently under development, and its implementation is subject to change. While the core concept and goal of enabling decentralized volatility trading will remain the same, various aspects such as pricing mechanisms, token handling, and market dynamics may evolve as the project progresses.
+**Vixdex is currently under active development and is not yet production-ready but lauch in mid june on testnet**
 
-
-Stay tuned for updates as we build and refine VixDex! 
+This project **has not been audited**, and may contain bugs, vulnerabilities, or unintended behaviors. By using any part of this repository or interacting with its deployed contracts, you do so **at your own risk*

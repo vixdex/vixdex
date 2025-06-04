@@ -2,7 +2,6 @@
 pragma solidity ^0.8.26;
 import {Test,console} from "forge-std/Test.sol";
 import {Deployers} from "v4-core/test/utils/Deployers.sol";
-import {IHooks} from "v4-core/src/interfaces/IHooks.sol";
 import {Hooks} from "v4-core/src/libraries/Hooks.sol";
 import {Currency, CurrencyLibrary} from "v4-core/src/types/Currency.sol";
 import {CurrencySettler} from "@uniswap/v4-core/test/utils/CurrencySettler.sol";
@@ -28,12 +27,12 @@ contract VixTest is Test,Deployers {
     address public baseToken;
     address public poolAdd = 0xCBCdF9626bC03E24f779434178A73a0B4bad62eD; // pool address of uniswap V3 pair (WBTC/ETH)
     address[2] ivTokenAdd;
-    address volumeOracle = 0x7E287bb62F87916c190b45BA0921F862Fb4b9Aa5; // volume oracle from vixdex
+    address volumeOracle = 0x39F26E0D5F7f603be61175E50A21895a4d8Da989; // volume oracle from vixdex
 
     struct HookData{
         address poolAdd;
     }
-    address _bondingCurve = 0xa2Cd20296027836dbD67874Ebd4a11Eeede292C8; // Bonding curve address 
+    address _bondingCurve = 0x06Af5812D823ea208833A9aFBf207396714bc031; // Bonding curve address 
     uint slope = 0.003 * 1e18; //slope of bonding curve
     uint fee = 0.003 * 1e18; // fee for the bonding curve
     uint basePrice = 0.1 * 1e18; // base price of the bonding curve
