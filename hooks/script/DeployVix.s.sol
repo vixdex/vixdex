@@ -13,7 +13,7 @@ contract HookMiningSample is Script {
     // Address of PoolManager deployed on Sepolia
     PoolManager manager =
         PoolManager(0x000000000004444c5dc75cB358380D2e3dE08A90);
-    address baseToken = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+    address baseToken = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2; // change to your base token address
 
     function setUp() public {
 		// Set up the hook flags you wish to enable
@@ -24,9 +24,9 @@ contract HookMiningSample is Script {
                     Hooks.AFTER_SWAP_FLAG);
 
 		// Find an address + salt using HookMiner that meets our flags criteria
-        address CREATE2_DEPLOYER = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
-        address _bondingCurve = 0xfC47d03bd4C8a7E62A62f29000ceBa4D84142343;
-        address volumeOracle = 0x7E287bb62F87916c190b45BA0921F862Fb4b9Aa5; // Replace with actual VolumeOracle address if needed
+        address CREATE2_DEPLOYER = 0x4e59b44847b379578588920cA78FbF26c0B4956C; //create2 deployer address in Sepolia
+        address _bondingCurve = 0xfC47d03bd4C8a7E62A62f29000ceBa4D84142343; //replace with actual BondingCurve address
+        address volumeOracle = 0x7E287bb62F87916c190b45BA0921F862Fb4b9Aa5; // Replace with actual VolumeOracle address 
         uint slope = 0.03 * 1e18;
          uint fee = 0.0003 * 1e18;
          uint basePrice = 0.1 * 1e18;
@@ -34,7 +34,7 @@ contract HookMiningSample is Script {
             CREATE2_DEPLOYER,
             flags,
             type(Vix).creationCode,
-            abi.encode(address(manager),address(baseToken))
+            abi.encode(address(manager),address(baseToken),_bondingCurve,volumeOracle,slope,fee,basePrice)
         );		// Deploy our hook contract with the given `salt` value
         vm.startBroadcast();
         Vix hook = new Vix{salt: salt}(manager, baseToken,_bondingCurve,volumeOracle,slope,fee,basePrice);
@@ -45,7 +45,7 @@ contract HookMiningSample is Script {
     }
 
     function run() public {
-        console.log("Hello");
+        console.log("successfully deployed Vix hook contract");
     }
     
 }
