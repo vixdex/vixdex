@@ -8,14 +8,15 @@ import {CurrencySettler} from "@uniswap/v4-core/test/utils/CurrencySettler.sol";
 import {SortTokens} from "@uniswap/v4-core/test/utils/SortTokens.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
-import { IPoolManager } from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {SwapParams, ModifyLiquidityParams} from "v4-core/src/types/PoolOperation.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {StateLibrary} from "v4-core/src/libraries/StateLibrary.sol";
 import {PoolKey} from "v4-core/src/types/PoolKey.sol";
 import {PoolSwapTest} from "v4-core/src/test/PoolSwapTest.sol";
 import {TickMath} from "v4-core/src/libraries/TickMath.sol";
 import {Vix} from "../src/Vix.sol";
-//neede to automatically deploy and get bytecode adn address of bonding curve
+//need to automatically deploy and get bytecode adn address of bonding curve
 import {HuffDeployer} from "foundry-huff/HuffDeployer.sol";
 import {IVolumeOracle} from "../src/interfaces/IVolumeOracle.sol";
 
@@ -27,14 +28,14 @@ contract VixTest is Test,Deployers {
     address public baseToken;
     address public poolAdd = 0xCBCdF9626bC03E24f779434178A73a0B4bad62eD; // pool address of uniswap V3 pair (WBTC/ETH)
     address[2] ivTokenAdd;
-    address volumeOracle = 0x39F26E0D5F7f603be61175E50A21895a4d8Da989; // volume oracle from vixdex
+    address volumeOracle = 0xacFBE65392356184b400b941E8DFEEeE65e86F6E; // volume oracle from vixdex
 
     struct HookData{
         address poolAdd;
     }
-    address _bondingCurve = 0x06Af5812D823ea208833A9aFBf207396714bc031; // Bonding curve address 
+    address _bondingCurve = 0x938d59DA07F52887f701E82a7CCd654a55C1593d; // Bonding curve address 
     uint slope = 0.003 * 1e18; //slope of bonding curve
-    uint fee = 0.003 * 1e18; // fee for the bonding curve
+    uint fee = 0.003 * 1e18; // fee for the bonding curvef
     uint basePrice = 0.1 * 1e18; // base price of the bonding curve
 
     function setUp()external {
@@ -106,7 +107,7 @@ contract VixTest is Test,Deployers {
        uint gasStart = gasleft();
         swapRouter.swap(
             key,
-            IPoolManager.SwapParams(
+            SwapParams(
             {
             zeroForOne: true,
             amountSpecified: 4 ether,
@@ -123,7 +124,7 @@ contract VixTest is Test,Deployers {
         MockERC20(ivTokenAdd[0]).approve(address(swapRouter),balance);
             swapRouter.swap(
             key,
-            IPoolManager.SwapParams(
+            SwapParams(
             {
                 zeroForOne:false,
                 amountSpecified: -(int256(balance)), 
@@ -170,7 +171,7 @@ contract VixTest is Test,Deployers {
 
         swapRouter.swap(
             key,
-            IPoolManager.SwapParams(
+            SwapParams(
             {
             zeroForOne: true,
             amountSpecified: 4 ether,
@@ -187,7 +188,7 @@ contract VixTest is Test,Deployers {
         MockERC20(ivTokenAdd[1]).approve(address(swapRouter),balance);
             swapRouter.swap(
             key,
-            IPoolManager.SwapParams(
+            SwapParams(
             {
                 zeroForOne:false,
                 amountSpecified: -(int256(balance)), 

@@ -16,6 +16,8 @@ import {IV4Router} from "@uniswap/v4-periphery/src/interfaces/IV4Router.sol";
 import {IPermit2} from "@uniswap/permit2/src/interfaces/IPermit2.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
+
+
 contract Router is ReentrancyGuard {
     using SafeERC20 for IERC20;
 
@@ -46,8 +48,9 @@ contract Router is ReentrancyGuard {
     ) public {
         require(_token0 != address(0) && _token1 != address(0), "Router: Token addresses cannot be zero");
         require(_token0 != _token1, "Router: Tokens must be different");
-        Currency currency0 = Currency.wrap(_token0);
-        Currency currency1 = Currency.wrap(_token1);
+        (address token0, address token1) = _token0 < _token1 ? (_token0, _token1) : (_token1, _token0);//sorting as per uniswap
+        Currency currency0 = Currency.wrap(token0);
+        Currency currency1 = Currency.wrap(token1);
         PoolKey memory pool = PoolKey({
             currency0: currency0,
             currency1: currency1,

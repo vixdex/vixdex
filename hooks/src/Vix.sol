@@ -3,9 +3,10 @@
 
 pragma solidity ^0.8.26;
 
-import {BaseHook} from "@uniswap/v4-periphery/src/utils/BaseHook.sol";
+import {BaseHook} from "v4-periphery/src/utils/BaseHook.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {ModifyLiquidityParams, SwapParams} from "v4-core/src/types/PoolOperation.sol";
 import {Currency,CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {CurrencySettler} from "@uniswap/v4-core/test/utils/CurrencySettler.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -153,7 +154,7 @@ function getHookPermissions() public pure override returns (Hooks.Permissions me
 
  */
 
-function _beforeAddLiquidity(address, PoolKey calldata, IPoolManager.ModifyLiquidityParams calldata , bytes calldata)internal view override  returns (bytes4){
+function _beforeAddLiquidity(address, PoolKey calldata, ModifyLiquidityParams calldata, bytes calldata)internal view override  returns (bytes4){
     revert invalidLiquidityAction();
 }
 
@@ -172,7 +173,7 @@ function _beforeAddLiquidity(address, PoolKey calldata, IPoolManager.ModifyLiqui
  * @return uint24 Always returns 0, can be used for future extensibility.
  */
     
-function _beforeSwap(address sender,PoolKey calldata key,IPoolManager.SwapParams calldata params,bytes calldata data) internal override returns (bytes4, BeforeSwapDelta, uint24) {
+function _beforeSwap(address sender,PoolKey calldata key,SwapParams calldata params,bytes calldata data) internal override returns (bytes4, BeforeSwapDelta, uint24) {
     BeforeSwapDelta beforeSwapDelta;
     HookData memory hookData = abi.decode(data, (HookData));
     console.log("pool address: ",hookData.poolAdd);
@@ -232,7 +233,7 @@ function _beforeSwap(address sender,PoolKey calldata key,IPoolManager.SwapParams
 //after swap help us to swap the reserve between vix tokens and mint or burn the contract
 //holding according to current IV changes by comparing with initial iv. 
 //the contract holdings gonna take part in the pricing
-function _afterSwap(address, PoolKey calldata, IPoolManager.SwapParams calldata, BalanceDelta, bytes calldata data)internal override returns (bytes4, int128){
+function _afterSwap(address, PoolKey calldata, SwapParams calldata, BalanceDelta, bytes calldata data)internal override returns (bytes4, int128){
     HookData memory hookData = abi.decode(data, (HookData));
     address _poolAdd = hookData.poolAdd;
     address _poolAddress = vixTokens[_poolAdd].poolAddress;
